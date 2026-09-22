@@ -1,0 +1,903 @@
+We have completed:
+
+✓ MODULE 0 — Project Foundation
+✓ MODULE 1 — Database Layer
+✓ MODULE 2 — Authentication
+
+The current project includes:
+
+BACKEND
+- FastAPI
+- PostgreSQL
+- Redis
+- Async SQLAlchemy
+- Alembic
+- JWT authentication
+- Password hashing
+- User, Debate, and Agent database models
+- Core agent seeding
+- Health endpoint
+
+FRONTEND
+- React
+- Vite
+- TypeScript
+- TailwindCSS
+- Login page
+- Register page
+- Authentication context/state
+- Protected routes
+- Logout
+
+INFRASTRUCTURE
+- Docker Compose
+- PostgreSQL
+- Redis
+
+AUTHENTICATION
+- POST /api/v1/auth/register
+- POST /api/v1/auth/login
+- GET /api/v1/auth/me
+- JWT authentication
+- Protected routes
+- Logout
+
+Now implement ONLY:
+
+==================================================
+MODULE 3 — LLM PROVIDER + BASE AGENT
+==================================================
+
+The first real LLM provider for this project will be:
+
+GROQ
+
+However, the architecture must allow future providers such as OpenAI, Gemini, or Anthropic to be added without rewriting agents.
+
+Do NOT implement:
+
+- Role-specific AI agents
+- Economist Agent
+- Lawyer Agent
+- Doctor Agent
+- Scientist Agent
+- Ethicist Agent
+- Analyst Agent
+- Multi-agent debate
+- LangGraph
+- Debate orchestration
+- Debate rounds
+- WebSockets
+- Live debate transcript
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Logical fallacy detection
+- Argument scoring
+- Judge AI
+- Debate winner selection
+- Analytics dashboard
+- PDF reports
+- Custom agents
+
+Those belong to later modules.
+
+==================================================
+1. FIRST INSPECT THE CURRENT PROJECT
+==================================================
+
+Before changing anything:
+
+1. Inspect the existing backend architecture.
+2. Inspect the existing Agent database model.
+3. Inspect the existing configuration/environment files.
+4. Inspect dependency management.
+5. Inspect API routing structure.
+6. Inspect database/session architecture.
+7. Inspect the existing authentication dependency.
+8. Verify MODULE 0, MODULE 1, and MODULE 2 are not broken.
+9. Do not rewrite working infrastructure unnecessarily.
+
+If issues are found, fix only issues directly affecting this module.
+
+Do not expand scope.
+
+==================================================
+2. MODULE GOAL
+==================================================
+
+Create a reusable architecture:
+
+API Endpoint
+      ↓
+BaseAgent
+      ↓
+LLM Provider Abstraction
+      ↓
+LLM Factory
+      ↓
+Configured Provider
+      ↓
+Groq API
+
+Future architecture should allow:
+
+BaseLLMProvider
+        ↑
+        │
+    GroqProvider
+
+Later:
+
+    OpenAIProvider
+    GeminiProvider
+    AnthropicProvider
+
+Future AI agents must not directly depend on Groq.
+
+For example, future code should conceptually work like:
+
+agent = SomeFutureAgent(...)
+response = await agent.generate_response(...)
+
+The agent should not care whether the underlying provider is Groq, OpenAI, Gemini, etc.
+
+==================================================
+3. LLM CONFIGURATION
+==================================================
+
+Use environment variables.
+
+Implement configuration similar to:
+
+LLM_PROVIDER=groq
+GROQ_API_KEY=
+GROQ_MODEL=
+LLM_TIMEOUT_SECONDS=60
+
+Use the existing project configuration architecture.
+
+Do not hardcode:
+
+- API keys
+- provider names inside agents
+- model names throughout application code
+
+Configuration must be centralized.
+
+Update:
+
+.env.example
+
+with placeholders only.
+
+Example:
+
+LLM_PROVIDER=groq
+GROQ_API_KEY=your-groq-api-key-here
+GROQ_MODEL=<supported-groq-model>
+LLM_TIMEOUT_SECONDS=60
+
+Do not commit real API keys.
+
+Ensure the real `.env` is ignored by Git if the project uses Git.
+
+The backend must fail clearly if an LLM endpoint is called without required configuration.
+
+Do not silently return fake responses.
+
+Mocks are allowed only for tests.
+
+==================================================
+4. PROVIDER ABSTRACTION
+==================================================
+
+Create a clean provider abstraction.
+
+Suggested structure:
+
+backend/app/
+
+├── core/
+│   └── config.py
+│
+├── llm/
+│   ├── base.py
+│   ├── factory.py
+│   └── providers/
+│       └── groq_provider.py
+│
+└── agents/
+    └── base_agent.py
+
+Adapt this structure to the current project rather than blindly duplicating it.
+
+Create a BaseLLMProvider abstraction.
+
+It should expose a consistent async generation method.
+
+Conceptually:
+
+async generate(
+    messages,
+    temperature=None,
+    max_tokens=None
+)
+
+The exact interface can differ if the existing architecture requires it.
+
+The important requirement:
+
+Agents must use the abstraction.
+
+Agents must NOT directly import or call the Groq SDK.
+
+==================================================
+5. NORMALIZED LLM RESPONSE
+==================================================
+
+Do not expose raw Groq SDK responses throughout the application.
+
+Create a normalized response structure.
+
+For example:
+
+LLMResponse:
+
+- content
+- provider
+- model
+
+Optional metadata may be included if genuinely useful.
+
+Do not include:
+
+- API keys
+- raw sensitive provider data
+
+Example conceptual response:
+
+{
+    "content": "Generated answer",
+    "provider": "groq",
+    "model": "configured-model"
+}
+
+Use appropriate Pydantic models, dataclasses, or typed structures.
+
+==================================================
+6. CONSISTENT MESSAGE FORMAT
+==================================================
+
+Use a provider-independent internal message format.
+
+For example:
+
+[
+    {
+        "role": "system",
+        "content": "You are a helpful AI assistant."
+    },
+    {
+        "role": "user",
+        "content": "Explain renewable energy."
+    }
+]
+
+Validate messages reasonably.
+
+The Groq provider may convert the internal format to the SDK format internally.
+
+The rest of the application should not depend on Groq-specific message objects.
+
+==================================================
+7. GROQ PROVIDER
+==================================================
+
+Implement:
+
+GroqProvider
+
+Use the maintained official Groq Python SDK.
+
+The provider must:
+
+1. Read GROQ_API_KEY from configuration.
+2. Read GROQ_MODEL from configuration.
+3. Use asynchronous API calls where supported.
+4. Respect LLM_TIMEOUT_SECONDS.
+5. Convert internal messages to the Groq request format.
+6. Call Groq chat completion functionality.
+7. Normalize the response into the project's LLMResponse.
+8. Handle provider errors safely.
+9. Never expose API keys in errors or logs.
+
+Do not use the Groq SDK directly anywhere outside the provider implementation.
+
+==================================================
+8. LLM FACTORY
+==================================================
+
+Create a centralized factory or dependency mechanism.
+
+Conceptually:
+
+get_llm_provider()
+
+Responsibilities:
+
+1. Read LLM_PROVIDER.
+2. Validate provider configuration.
+3. Return GroqProvider when:
+
+LLM_PROVIDER=groq
+
+4. Raise a clear configuration error for unsupported providers.
+5. Prevent provider selection logic from being duplicated across agents.
+
+Future providers must be easy to add.
+
+For example, later adding Gemini should require adding a provider implementation and extending the factory.
+
+Do not implement Gemini now.
+
+==================================================
+9. BASE AGENT
+==================================================
+
+Create:
+
+BaseAgent
+
+This is the reusable base for future agents.
+
+Future structure may look like:
+
+BaseAgent
+    ├── EconomistAgent
+    ├── LawyerAgent
+    ├── DoctorAgent
+    ├── ScientistAgent
+    ├── EthicistAgent
+    └── AnalystAgent
+
+DO NOT implement those subclasses now.
+
+BaseAgent should support:
+
+- name
+- role
+- system_prompt
+- LLM provider
+- async response generation
+
+Conceptual example:
+
+class BaseAgent:
+
+    name
+    role
+    system_prompt
+    llm_provider
+
+    async generate_response(user_input)
+
+The exact code can differ.
+
+Requirements:
+
+1. BaseAgent constructs a system message using its system_prompt.
+2. BaseAgent adds the user message.
+3. BaseAgent sends messages to the LLM provider abstraction.
+4. BaseAgent returns normalized LLM output.
+5. BaseAgent must not import the Groq SDK.
+6. BaseAgent must not contain provider-specific logic.
+
+==================================================
+10. SYSTEM PROMPT ARCHITECTURE
+==================================================
+
+The BaseAgent must support configurable system prompts.
+
+For this module, use only a generic system prompt for testing.
+
+Do NOT create specialized prompts for:
+
+- Economist
+- Lawyer
+- Doctor
+- Scientist
+- Ethicist
+- Analyst
+
+Those belong to MODULE 4.
+
+The architecture should simply make it possible for future agents to provide different system prompts.
+
+==================================================
+11. TEST API ENDPOINT
+==================================================
+
+Create one minimal endpoint for verifying Module 3.
+
+For example:
+
+POST /api/v1/ai/test
+
+or another clean location consistent with the current project API structure.
+
+This endpoint is NOT a chat system.
+
+It handles:
+
+One request
+↓
+One BaseAgent execution
+↓
+One LLM response
+
+Request example:
+
+{
+    "message": "Explain the importance of renewable energy in two sentences."
+}
+
+Response example:
+
+{
+    "response": "...",
+    "provider": "groq",
+    "model": "..."
+}
+
+The endpoint should:
+
+1. Validate the request.
+2. Use a generic BaseAgent.
+3. Call BaseAgent.generate_response().
+4. BaseAgent uses the LLM provider abstraction.
+5. Return the normalized result.
+
+Do not add:
+
+- conversation history
+- memory
+- sessions
+- debate logic
+- streaming
+
+==================================================
+12. AUTHENTICATION
+==================================================
+
+The LLM endpoint consumes external API resources.
+
+Protect it using the authentication already implemented in MODULE 2.
+
+Reuse the existing authentication dependency.
+
+Conceptually:
+
+Depends(get_current_user)
+
+Requirements:
+
+- authenticated user → can access endpoint
+- unauthenticated user → 401
+- invalid token → 401
+
+Do not implement authentication again.
+
+==================================================
+13. ERROR HANDLING
+==================================================
+
+Handle errors safely.
+
+Examples:
+
+Missing GROQ_API_KEY
+→ clear server configuration error
+
+Missing GROQ_MODEL
+→ clear server configuration error
+
+Unsupported LLM_PROVIDER
+→ clear configuration error
+
+Groq API failure
+→ controlled server error
+
+Groq timeout
+→ controlled timeout/error response
+
+Invalid request input
+→ 422 validation error
+
+Never expose:
+
+- API keys
+- secrets
+- provider credentials
+- raw stack traces in API responses
+
+Do not log secrets.
+
+==================================================
+14. TIMEOUTS
+==================================================
+
+Use:
+
+LLM_TIMEOUT_SECONDS
+
+Configure the provider request with a reasonable timeout.
+
+Default:
+
+60 seconds
+
+Do not allow LLM requests to hang indefinitely.
+
+Do not build complicated retry logic in this module.
+
+==================================================
+15. NO STREAMING
+==================================================
+
+Do NOT implement:
+
+- token streaming
+- SSE
+- WebSockets
+- streamed responses
+
+Use normal HTTP request/response.
+
+Streaming belongs to a later module.
+
+==================================================
+16. DATABASE
+==================================================
+
+Inspect the existing Agent model.
+
+Do NOT unnecessarily modify:
+
+- User
+- Debate
+- Agent
+
+This module is an application architecture module.
+
+Do not create runtime agent records.
+
+Do not assign agents to debates.
+
+Do not create unnecessary migrations.
+
+Only create a migration if a genuine database change is required.
+
+==================================================
+17. FRONTEND
+==================================================
+
+Do not build a debate UI.
+
+Do not build:
+
+- agent selection
+- chat UI
+- debate transcript
+- analytics
+- dashboard
+
+Swagger/API testing is sufficient for this module.
+
+Frontend changes should be avoided unless absolutely required.
+
+==================================================
+18. DEPENDENCIES
+==================================================
+
+Add only dependencies genuinely required.
+
+Use the official maintained Groq Python SDK.
+
+Update the existing dependency management correctly.
+
+Do not add:
+
+- LangGraph
+- LangChain
+- unnecessary AI frameworks
+
+This module should remain lightweight.
+
+==================================================
+19. TESTS
+==================================================
+
+Create tests that do NOT require a real Groq API key.
+
+Mock the provider.
+
+At minimum test:
+
+1. Factory returns GroqProvider when LLM_PROVIDER=groq.
+2. Unsupported provider raises a clear error.
+3. Missing Groq API key/configuration is handled.
+4. Provider returns normalized LLMResponse.
+5. BaseAgent sends the system prompt.
+6. BaseAgent sends the user message.
+7. BaseAgent communicates through BaseLLMProvider abstraction.
+8. BaseAgent does not directly require Groq SDK.
+9. Test endpoint rejects unauthenticated users.
+10. Test endpoint accepts authenticated users with mocked provider.
+11. Invalid request input is rejected.
+12. Provider errors are handled safely.
+13. Timeout behavior is handled safely.
+
+Tests must not make real paid API calls.
+
+==================================================
+20. REAL GROQ VERIFICATION
+==================================================
+
+After automated tests pass:
+
+If a valid GROQ_API_KEY and GROQ_MODEL are configured locally:
+
+Perform one real authenticated request.
+
+Flow:
+
+Authenticated User
+        ↓
+POST test endpoint
+        ↓
+BaseAgent
+        ↓
+BaseLLMProvider
+        ↓
+GroqProvider
+        ↓
+Groq API
+        ↓
+Normalized response
+
+Verify:
+
+1. Backend starts.
+2. Health endpoint still works.
+3. PostgreSQL still works.
+4. Redis still works.
+5. Authentication still works.
+6. Valid authenticated request reaches the endpoint.
+7. BaseAgent is used.
+8. Provider abstraction is used.
+9. Groq returns a real response.
+10. Response is normalized.
+11. API key is not exposed.
+12. Existing functionality is not broken.
+
+If GROQ_API_KEY is not configured:
+
+Do NOT fake a successful real API request.
+
+Clearly report:
+
+"Automated tests passed using mocks. Real Groq verification requires a valid GROQ_API_KEY and GROQ_MODEL."
+
+==================================================
+21. SWAGGER / OPENAPI
+==================================================
+
+Ensure the new endpoint appears in:
+
+/docs
+
+Swagger must show:
+
+- request schema
+- response schema
+- Bearer authentication requirement
+
+Do not break existing documentation.
+
+==================================================
+22. README UPDATE
+==================================================
+
+Update README.
+
+Add:
+
+### LLM Provider and Base Agent
+
+Explain:
+
+- provider abstraction
+- Groq as the initial provider
+- environment configuration
+- GroqProvider
+- BaseAgent
+- normalized responses
+- protected test endpoint
+- how future providers can be added
+
+Document:
+
+LLM_PROVIDER
+GROQ_API_KEY
+GROQ_MODEL
+LLM_TIMEOUT_SECONDS
+
+Update implementation status.
+
+Implemented:
+
+✓ Project foundation
+✓ PostgreSQL
+✓ Redis
+✓ FastAPI
+✓ React
+✓ SQLAlchemy
+✓ Alembic
+✓ User/Debate/Agent models
+✓ Authentication
+✓ JWT
+✓ Password hashing
+✓ Protected routes
+✓ LLM provider abstraction
+✓ Groq provider
+✓ BaseAgent
+
+Not yet implemented:
+
+- Role-specific AI agents
+- Multi-agent debate
+- LangGraph workflow
+- Debate orchestration
+- Debate rounds
+- WebSockets
+- Live transcript
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Results dashboard
+- Analytics
+- PDF reports
+- Custom agents
+
+==================================================
+23. DO NOT BREAK EXISTING MODULES
+==================================================
+
+After implementation verify:
+
+GET /api/v1/health still works.
+
+PostgreSQL still works.
+
+Redis still works.
+
+Register still works.
+
+Login still works.
+
+GET /api/v1/auth/me still works.
+
+Frontend still starts.
+
+Protected frontend routes still work.
+
+Docker Compose infrastructure still works.
+
+Alembic still works.
+
+Core seeded agents still exist.
+
+Do not modify unrelated functionality.
+
+==================================================
+24. ACTUAL VERIFICATION
+==================================================
+
+Do not simply say "implemented."
+
+Actually inspect and run the project.
+
+Verify:
+
+1. PostgreSQL running.
+2. Redis running.
+3. Backend starts.
+4. Existing health endpoint works.
+5. Existing authentication works.
+6. LLM configuration validation works.
+7. Provider factory works.
+8. BaseAgent works with mocked provider.
+9. Test endpoint rejects unauthenticated users.
+10. Test endpoint works with authenticated users and mocked provider.
+11. Invalid input is rejected.
+12. Provider errors are handled safely.
+13. Timeout behavior is handled.
+14. Automated tests pass.
+15. If valid Groq credentials exist, one real Groq request works.
+
+Fix only errors directly related to this module.
+
+Do not expand scope.
+
+==================================================
+25. STOP CONDITION
+==================================================
+
+When MODULE 3 is fully implemented and verified, STOP.
+
+Do NOT automatically implement:
+
+- Economist Agent
+- Lawyer Agent
+- Doctor Agent
+- Scientist Agent
+- Ethicist Agent
+- Analyst Agent
+- Multi-agent debates
+- LangGraph
+- Debate orchestration
+- WebSockets
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Judge AI
+- Analytics
+- PDF reports
+
+==================================================
+26. FINAL REPORT
+==================================================
+
+At the end report:
+
+A. Files created/modified
+
+B. LLM provider architecture
+
+C. Groq configuration/environment variables
+
+D. BaseAgent architecture
+
+E. API endpoint added
+
+F. Authentication protection used
+
+G. Dependencies added
+
+H. Database changes/migrations
+
+I. Tests performed
+
+J. Test results
+
+K. Real Groq verification result
+
+If not performed, explicitly state:
+
+"Real Groq verification requires valid GROQ_API_KEY and GROQ_MODEL."
+
+L. Any issues discovered
+
+M. Exact next module
+
+The next module after this will be:
+
+MODULE 4 — Core Role-Based AI Agents
+
+But do not implement MODULE 4 in this task.

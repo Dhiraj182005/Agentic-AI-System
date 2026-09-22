@@ -1,0 +1,19 @@
+Do not modify anything yet.
+
+Review your previous findings and classify every finding into:
+1. Confirmed bug/security vulnerability
+2. Architecture/code-quality issue
+3. Development-only issue that is acceptable for now
+4. False positive or questionable claim
+
+For each finding, inspect the relevant code/config and explain exactly why it belongs in that category.
+
+Then give me a prioritized remediation plan for this project, with:
+- issue
+- severity
+- exact file/line
+- why it matters
+- proposed fix
+- whether it should be fixed now or later
+
+Do not make any code changes until I approve the plan.

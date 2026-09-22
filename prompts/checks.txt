@@ -1,0 +1,32 @@
+The previous verification task appears to have stalled after starting the FastAPI server.
+
+Do not spend time waiting for long-running processes.
+
+Continue verification from the current project state.
+
+Perform the following checks with explicit commands and report the result of each:
+
+1. Check Docker containers and report whether PostgreSQL and Redis are running.
+2. Call:
+   http://127.0.0.1:8000/api/v1/health
+   and show the actual HTTP response.
+3. Check whether Alembic is at the latest migration.
+4. Verify PostgreSQL connectivity.
+5. Verify Redis connectivity.
+6. Run the backend test suite and report pass/fail/errors.
+7. Check whether the frontend builds successfully.
+8. Start the frontend only temporarily/background if required and verify it responds.
+9. Check that authentication endpoints are reachable:
+   - POST /api/v1/auth/register
+   - POST /api/v1/auth/login
+   - GET /api/v1/auth/me
+10. Do not modify project code unless you find a real error.
+11. Do not leave commands waiting indefinitely.
+12. If a process is already running, reuse it instead of starting duplicate servers.
+
+For every check, report:
+- command executed
+- result
+- error if any
+
+At the end give a concise summary of what works and what does not.

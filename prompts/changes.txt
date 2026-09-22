@@ -1,0 +1,82 @@
+Yes. Proceed with creating the formal classified findings and remediation plan exactly as specified in some fixes.txt.
+
+Important constraints:
+- DO NOT modify, create, delete, or rename any project files.
+- DO NOT run migrations or change the database.
+- DO NOT install or uninstall dependencies.
+- DO NOT make git commits.
+- This is analysis only.
+
+For EVERY finding from the previous audits:
+
+1. Verify it directly against the current codebase/configuration.
+2. Classify it into exactly ONE category:
+   A. Confirmed bug/security vulnerability
+   B. Architecture/code-quality issue
+   C. Development-only issue acceptable for now
+   D. False positive/questionable
+
+For each finding provide:
+- Category
+- Severity: Critical / High / Medium / Low / Informational
+- Exact file
+- Exact line(s)
+- Evidence from the code/config
+- Why it matters
+- Whether it is actually exploitable/problematic in the CURRENT setup
+- Recommended fix
+- Now vs Later
+- Any assumptions or uncertainty
+
+Be especially careful not to label something a vulnerability merely because it could become one in a different production configuration.
+
+Re-check these findings specifically:
+- SECRET_KEY vs JWT_SECRET_KEY
+- double commit in auth_service.py
+- get_user_by_id string vs UUID
+- health endpoint Redis status handling
+- hardcoded JWT secret
+- hardcoded PostgreSQL credentials
+- Redis authentication
+- PostgreSQL port exposure
+- auth rate limiting
+- JWT localStorage
+- AuthContext login token ordering
+- Docker --reload
+- Dockerfile/package-lock/.dockerignore
+- VITE_API_URL build-time vs runtime
+- Vite host:true
+- api.ts res.json() on empty responses
+- docker-compose depends_on/healthchecks
+- .gitignore
+- README
+- test database schema dropping
+- Git repository/root tracking issue
+
+After classification, produce:
+
+## Executive Summary
+Give me the 3-5 things that genuinely matter most.
+
+## Confirmed Issues
+Only issues supported by direct evidence.
+
+## Code Quality / Architecture
+Issues worth cleaning up but not urgent vulnerabilities.
+
+## Development-Only
+Things that are acceptable for the current development stage but must be addressed before production.
+
+## False Positives / Questionable Findings
+Explain why the original concern does not currently hold.
+
+## Prioritized Remediation Plan
+Rank every action:
+P0 = must fix before continuing
+P1 = fix before production
+P2 = improve later
+P3 = optional
+
+Finally, give me a recommended implementation order.
+
+Do not make ANY changes. Stop after producing the report and wait for my approval.

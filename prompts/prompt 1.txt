@@ -1,0 +1,662 @@
+You are working on my final-year B.Tech CSE (Data Science) project:
+
+"Multi-Agent LLM Based Argument Verification and Evidence-Based Decisions"
+
+I want you to build the project incrementally and professionally.
+
+IMPORTANT:
+Do NOT build the entire project in this task.
+Do NOT implement authentication, LLM agents, LangGraph, WebSockets, evidence retrieval, fallacy detection, Judge AI, analytics, PDF reports, or advanced frontend features yet.
+
+This task is ONLY:
+
+MODULE 0 — Project Foundation
+MODULE 1 — Database Layer
+
+The project specification requires a real working application, modular architecture, PostgreSQL as the main database, Redis for caching/session state, and a React frontend with a FastAPI backend. The complete system will eventually use LangGraph for orchestration, but that comes later.
+
+==================================================
+1. FIRST INSPECT THE EXISTING PROJECT
+==================================================
+
+Before writing code:
+
+1. Inspect the entire existing repository.
+2. Determine whether a frontend/backend structure already exists.
+3. Identify the current technology choices.
+4. Do NOT unnecessarily delete or rewrite existing working code.
+5. If the repository is empty, create the structure described below.
+6. If something already exists, adapt it cleanly instead of creating duplicate structures.
+7. Explain briefly what you found before making major changes.
+
+==================================================
+2. TARGET ARCHITECTURE
+==================================================
+
+Use this architecture:
+
+project-root/
+│
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── ...
+│
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   └── main.py
+│   │
+│   ├── tests/
+│   ├── requirements.txt
+│   └── ...
+│
+├── docker-compose.yml
+├── .env.example
+├── .gitignore
+└── README.md
+
+Keep the architecture modular because later modules will add:
+
+agents/
+orchestration/
+evidence/
+analysis/
+reports/
+websocket/
+etc.
+
+Do not implement those modules now unless basic empty package directories are genuinely useful.
+
+==================================================
+3. BACKEND
+==================================================
+
+Use:
+
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+- async database access where practical
+- Uvicorn
+
+Create a clean FastAPI application.
+
+The backend must have:
+
+GET /health
+
+The health endpoint should return a simple structured response such as:
+
+{
+    "status": "ok"
+}
+
+Also create a database health check if practical, but do not over-engineer it.
+
+==================================================
+4. FRONTEND
+==================================================
+
+Use:
+
+- React
+- Vite
+- TypeScript if the existing project allows it cleanly
+- TailwindCSS only if setup is straightforward
+
+Create a minimal application.
+
+For now the frontend only needs:
+
+- Basic application shell
+- Project name
+- Backend connection/health check
+- Display whether the backend is reachable
+
+Do NOT build login pages, debate pages, agent cards, dashboards, or other final UI yet.
+
+The purpose of this stage is proving:
+
+React → FastAPI
+
+works correctly.
+
+==================================================
+5. POSTGRESQL
+==================================================
+
+Configure PostgreSQL through Docker Compose.
+
+Create a PostgreSQL service.
+
+Use environment variables instead of hardcoding credentials.
+
+Example configuration:
+
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/aidebate
+
+Do not commit real secrets.
+
+==================================================
+6. REDIS
+==================================================
+
+Add Redis to docker-compose.
+
+Use environment configuration such as:
+
+REDIS_URL=redis://redis:6379/0
+
+At this stage we only need Redis running and a basic connection/health check.
+
+Do NOT implement caching logic yet.
+
+==================================================
+7. DOCKER COMPOSE
+==================================================
+
+Create:
+
+docker-compose.yml
+
+Services should eventually be:
+
+frontend
+backend
+db
+redis
+
+For this task, make sure at minimum:
+
+backend
+db
+redis
+
+work correctly.
+
+Frontend should also be included if the existing project structure supports it.
+
+The intended architecture is:
+
+frontend
+   |
+   v
+backend
+   |
+   +----> PostgreSQL
+   |
+   +----> Redis
+
+Later the backend will connect to external LLM and evidence providers.
+
+==================================================
+8. ENVIRONMENT CONFIGURATION
+==================================================
+
+Create:
+
+.env.example
+
+Include configuration for:
+
+APP_ENV=development
+APP_HOST=0.0.0.0
+APP_PORT=8000
+
+DATABASE_URL=...
+REDIS_URL=...
+
+FRONTEND_URL=http://localhost:5173
+
+Also leave placeholders for future modules:
+
+LLM_PROVIDER=
+LLM_MODEL=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+
+EVIDENCE_PROVIDER=
+TAVILY_API_KEY=
+SERPAPI_API_KEY=
+GOOGLE_FACT_CHECK_API_KEY=
+
+Do not use these future API keys yet.
+
+Create proper configuration loading using environment variables.
+
+Never expose backend API keys to React.
+
+==================================================
+9. DATABASE ARCHITECTURE
+==================================================
+
+Create the initial SQLAlchemy models.
+
+We eventually need these entities:
+
+users
+debates
+agents
+debate_agents
+debate_turns
+claims
+evidence
+fallacies
+evaluations
+judge_results
+reports
+
+However, do NOT over-implement relationships for future modules if they are not needed yet.
+
+At this stage create the core initial models:
+
+User
+Debate
+Agent
+
+Design them so future modules can extend them without major restructuring.
+
+--------------------------------------------------
+USER
+--------------------------------------------------
+
+Fields should include approximately:
+
+id
+email
+password_hash
+created_at
+updated_at
+
+Use UUIDs or another robust primary-key strategy.
+
+Do NOT implement authentication yet.
+
+The password_hash field exists for the future authentication module.
+
+--------------------------------------------------
+DEBATE
+--------------------------------------------------
+
+Fields should include approximately:
+
+id
+user_id
+topic
+status
+expert_selection_mode
+mode
+total_rounds
+verify_evidence
+created_at
+updated_at
+
+Status should support future states such as:
+
+pending
+running
+completed
+failed
+cancelled
+
+expert_selection_mode:
+
+auto
+manual
+
+mode:
+
+balanced
+pro_con
+
+Store configuration because debates must be reproducible later.
+
+--------------------------------------------------
+AGENT
+--------------------------------------------------
+
+Fields should include approximately:
+
+id
+name
+role
+description
+is_core
+is_active
+created_at
+updated_at
+
+Seed the initial core agents:
+
+economist
+lawyer
+scientist
+doctor
+ethicist
+analyst
+
+Do NOT implement their LLM behavior yet.
+
+They are database definitions only at this stage.
+
+==================================================
+10. DATABASE RELATIONSHIPS
+==================================================
+
+Implement:
+
+User
+  |
+  +---- Debates
+
+Debate
+  |
+  +---- User
+
+Use proper foreign keys.
+
+Make sure deleting or updating records does not accidentally create broken references.
+
+Design the schema so later we can add:
+
+DebateAgent
+DebateTurn
+Claim
+Evidence
+Fallacy
+Evaluation
+JudgeResult
+Report
+
+without redesigning the entire database.
+
+==================================================
+11. ALEMBIC
+==================================================
+
+Set up Alembic properly.
+
+Create the initial migration.
+
+The application should be able to initialize the database using migrations rather than manually creating tables.
+
+Expected workflow:
+
+alembic upgrade head
+
+Do not rely on:
+
+Base.metadata.create_all()
+
+as the primary production database initialization mechanism.
+
+==================================================
+12. DATABASE SEEDING
+==================================================
+
+Create a simple seed mechanism for the six core agents:
+
+Economist
+Lawyer
+Scientist
+Doctor
+Ethicist
+Analyst
+
+Do not generate fake debate content.
+
+These are only static agent definitions.
+
+==================================================
+13. API STRUCTURE
+==================================================
+
+Create a clean API structure such as:
+
+backend/app/api/
+    health.py
+
+Future modules will later add:
+
+auth.py
+debates.py
+agents.py
+reports.py
+
+For now only implement health-related endpoints.
+
+Keep API versioning in mind.
+
+Prefer:
+
+/api/v1/health
+
+or another consistent versioned structure.
+
+==================================================
+14. DATABASE TEST
+==================================================
+
+Create basic tests proving:
+
+1. Database connection works.
+2. User can be inserted.
+3. Debate can be associated with a User.
+4. Agent records exist.
+5. Foreign-key relationships work.
+6. Alembic migration works.
+
+Do not build a huge test suite yet.
+
+==================================================
+15. BACKEND ↔ DATABASE CHECK
+==================================================
+
+Create a simple endpoint that verifies the backend can communicate with PostgreSQL.
+
+For example:
+
+GET /api/v1/health
+
+Response:
+
+{
+    "status": "ok",
+    "database": "connected",
+    "redis": "connected"
+}
+
+If either service is unavailable, return an appropriate degraded/error status rather than pretending everything works.
+
+==================================================
+16. FRONTEND ↔ BACKEND CHECK
+==================================================
+
+The React application should call the backend health endpoint.
+
+Display something simple:
+
+AI Debate Arena
+
+Backend:
+✓ Connected
+
+Database:
+✓ Connected
+
+Redis:
+✓ Connected
+
+Do not hardcode these statuses.
+
+They must come from the actual backend response.
+
+==================================================
+17. ERROR HANDLING
+==================================================
+
+Add basic error handling for:
+
+- PostgreSQL unavailable
+- Redis unavailable
+- Backend unavailable
+- Invalid environment configuration
+
+Do not silently swallow errors.
+
+Do not return fake "connected" status.
+
+==================================================
+18. CODE QUALITY
+==================================================
+
+Follow these rules:
+
+- Type hints in Python
+- Pydantic schemas where appropriate
+- Separation of concerns
+- No giant files
+- No hardcoded secrets
+- No unnecessary dependencies
+- No fake AI responses
+- No unnecessary abstractions
+- Clear naming
+- Useful comments only
+- Keep functions reasonably small
+- Use async where appropriate
+- Do not create code for future modules just for the sake of creating files
+
+The project must remain understandable to a final-year student who needs to explain it during a viva.
+
+==================================================
+19. README
+==================================================
+
+Update README.md with:
+
+1. Project name
+2. Current architecture
+3. Technologies
+4. Folder structure
+5. Environment setup
+6. How to start PostgreSQL and Redis
+7. How to start backend
+8. How to start frontend
+9. How to run migrations
+10. How to run tests
+11. Current implementation status
+
+Clearly state:
+
+CURRENTLY IMPLEMENTED:
+- Project foundation
+- React frontend
+- FastAPI backend
+- PostgreSQL
+- Redis
+- Initial database models
+- Alembic migrations
+- Health checks
+
+NOT YET IMPLEMENTED:
+- Authentication
+- LLM agents
+- LangGraph
+- Debate orchestration
+- WebSockets
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument scoring
+- Judge AI
+- Dashboard
+- PDF reports
+
+==================================================
+20. DO NOT DO THESE THINGS
+==================================================
+
+Absolutely do NOT:
+
+- Build the complete project now.
+- Add fake AI agents.
+- Hardcode fake debate responses.
+- Pretend external evidence exists.
+- Implement LangGraph yet.
+- Implement OpenAI calls yet.
+- Implement Tavily/Search APIs yet.
+- Build the final dashboard yet.
+- Add unnecessary authentication yet.
+- Create fake WebSocket events.
+- Create placeholder features that look finished.
+- Delete existing useful project files without reason.
+- Introduce unnecessary technologies.
+
+This stage is infrastructure.
+
+==================================================
+21. FINAL VERIFICATION
+==================================================
+
+After implementation, actually run the relevant commands/tests.
+
+Verify:
+
+1. Docker Compose configuration is valid.
+2. PostgreSQL starts.
+3. Redis starts.
+4. Backend starts.
+5. Frontend starts.
+6. Alembic migration succeeds.
+7. Database tables are created.
+8. Seed agents exist.
+9. Backend health endpoint works.
+10. Backend correctly detects PostgreSQL and Redis.
+11. Frontend successfully communicates with backend.
+12. Tests pass.
+
+Do not merely tell me that these work.
+Actually verify them where possible.
+
+==================================================
+22. STOP CONDITION
+==================================================
+
+When this module is complete, STOP.
+
+Do not automatically continue to:
+
+Authentication
+or
+LLM agents
+or
+LangGraph.
+
+At the end provide:
+
+A. What you implemented
+B. Files created/modified
+C. Database schema summary
+D. Commands used to run the project
+E. Tests performed and their results
+F. Any problems that remain
+G. Exact recommended next module
+
+The next module after this will be:
+
+MODULE 2 — Authentication
+
+But do not implement it in this task.
+
+Remember: build a real foundation first. The project will later become a multi-agent evidence-based debate system, so the architecture must support that future workflow without prematurely implementing it.

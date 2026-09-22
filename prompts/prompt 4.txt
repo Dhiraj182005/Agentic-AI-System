@@ -1,0 +1,1070 @@
+We have completed and verified:
+
+✓ MODULE 0 — Project Foundation
+✓ MODULE 1 — Database Layer
+✓ MODULE 2 — Authentication
+✓ MODULE 3 — LLM Provider + Base Agent
+
+Current system:
+
+BACKEND
+- FastAPI
+- PostgreSQL
+- Redis
+- Async SQLAlchemy
+- Alembic
+- JWT authentication
+- Password hashing
+- LLM provider abstraction
+- GroqProvider
+- BaseLLMProvider
+- BaseAgent
+- Protected AI test endpoint
+
+FRONTEND
+- React
+- Vite
+- TypeScript
+- TailwindCSS
+- Authentication UI
+- Protected routes
+
+LLM
+- Groq is the currently configured provider
+- Real Groq API request has been successfully tested
+- BaseAgent successfully communicates through the provider abstraction
+
+DATABASE
+- User
+- Debate
+- Agent
+- Core agents are already seeded:
+  - Economist
+  - Lawyer
+  - Scientist
+  - Doctor
+  - Ethicist
+  - Analyst
+
+IMPORTANT:
+Do not assume that because the database has Agent records, role-specific agent implementations already exist. Module 4 must connect the seeded roles to actual role-based BaseAgent implementations.
+
+==================================================
+MODULE 4 — CORE ROLE-BASED AI AGENTS
+==================================================
+
+Implement ONLY the core role-based AI agent layer.
+
+The goal is to create reusable AI agents with distinct professional roles that all use the Module 3 BaseAgent + LLM provider architecture.
+
+Architecture:
+
+                    BaseAgent
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+ EconomistAgent   LawyerAgent   DoctorAgent
+        │              │              │
+ ScientistAgent  EthicistAgent AnalystAgent
+        │              │              │
+        └──────────────┼──────────────┘
+                       ↓
+                LLM Provider
+                       ↓
+                  GroqProvider
+
+DO NOT implement:
+
+- Debate orchestration
+- Multi-agent debate
+- Debate rounds
+- Agent-to-agent communication
+- LangGraph
+- WebSockets
+- Streaming
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Winner selection
+- Analytics
+- PDF reports
+- Custom user-created agents
+- Debate UI
+
+Those belong to later modules.
+
+==================================================
+1. FIRST INSPECT THE CURRENT PROJECT
+==================================================
+
+Before changing anything:
+
+1. Inspect BaseAgent from MODULE 3.
+2. Inspect BaseLLMProvider.
+3. Inspect GroqProvider.
+4. Inspect the LLM factory.
+5. Inspect the existing Agent database model.
+6. Inspect the seeded agent records.
+7. Inspect authentication.
+8. Inspect existing API structure.
+9. Inspect existing test structure.
+10. Verify the real Groq test endpoint still works.
+
+Do not rewrite working Module 3 infrastructure.
+
+If something from Module 3 must be changed to support agents, make the smallest clean change possible.
+
+Do not duplicate LLM/provider logic.
+
+==================================================
+2. AGENT ARCHITECTURE
+==================================================
+
+Create role-specific agents that inherit from BaseAgent or use it through a clean composition pattern.
+
+Expected conceptual architecture:
+
+BaseAgent
+    ↓
+RoleBasedAgent
+    ↓
+EconomistAgent
+LawyerAgent
+DoctorAgent
+ScientistAgent
+EthicistAgent
+AnalystAgent
+
+You may simplify this architecture if BaseAgent already provides everything required.
+
+Do NOT create unnecessary abstraction layers.
+
+Every role-specific agent must ultimately use:
+
+BaseAgent
+    ↓
+BaseLLMProvider
+    ↓
+GroqProvider
+
+No role-specific agent may directly import the Groq SDK.
+
+==================================================
+3. CORE AGENTS
+==================================================
+
+Implement exactly these six core agents:
+
+1. EconomistAgent
+2. LawyerAgent
+3. DoctorAgent
+4. ScientistAgent
+5. EthicistAgent
+6. AnalystAgent
+
+Do not implement "Other Agents".
+
+Do not implement custom agents.
+
+==================================================
+4. AGENT IDENTITIES
+==================================================
+
+Each agent must have:
+
+- stable identifier
+- name
+- role
+- description
+- system prompt
+- reference to BaseAgent/LLM provider
+
+Use the existing Agent database model where appropriate.
+
+The database currently contains seeded core agents.
+
+Do not create duplicate database records.
+
+The Python agent implementation and database Agent record should have a clear relationship.
+
+For example:
+
+Database:
+Economist
+    ↓
+EconomistAgent
+
+Database:
+Lawyer
+    ↓
+LawyerAgent
+
+etc.
+
+==================================================
+5. ROLE-SPECIFIC SYSTEM PROMPTS
+==================================================
+
+Create high-quality role-specific system prompts.
+
+These prompts should define:
+
+- professional perspective
+- reasoning style
+- domain focus
+- limitations
+- response behavior
+
+They should NOT instruct the agent to pretend to be a real licensed professional.
+
+These are analytical AI roles.
+
+--------------------------------------------------
+ECONOMIST AGENT
+--------------------------------------------------
+
+The Economist Agent should analyze topics from an economics perspective.
+
+Focus on concepts such as:
+
+- incentives
+- supply and demand
+- opportunity cost
+- markets
+- costs and benefits
+- externalities
+- employment
+- productivity
+- economic growth
+- distributional effects
+- short-term vs long-term effects
+
+The agent should distinguish:
+
+- economic evidence
+- assumptions
+- uncertainty
+
+It should avoid pretending to provide definitive economic forecasts when evidence is unavailable.
+
+--------------------------------------------------
+LAWYER AGENT
+--------------------------------------------------
+
+The Lawyer Agent should analyze topics from a legal reasoning perspective.
+
+Focus on:
+
+- legal principles
+- rights
+- obligations
+- regulatory implications
+- jurisdictional differences
+- legal risks
+- relevant assumptions
+
+The agent must clearly state that legal conclusions depend on jurisdiction and facts when appropriate.
+
+It must not claim to be a real lawyer.
+
+Do not add external legal research in this module.
+
+--------------------------------------------------
+DOCTOR AGENT
+--------------------------------------------------
+
+The Doctor Agent should analyze topics from a medical/scientific health perspective.
+
+Focus on:
+
+- biological mechanisms
+- health effects
+- risks
+- benefits
+- uncertainty
+- evidence quality
+
+The agent must avoid presenting itself as a real doctor.
+
+It should not provide dangerous personalized medical diagnosis or treatment instructions.
+
+Do not add medical evidence retrieval yet.
+
+--------------------------------------------------
+SCIENTIST AGENT
+--------------------------------------------------
+
+The Scientist Agent should analyze topics using scientific reasoning.
+
+Focus on:
+
+- hypotheses
+- evidence
+- causality
+- experimental reasoning
+- uncertainty
+- reproducibility
+- correlation vs causation
+- scientific consensus where appropriate
+
+The agent should clearly distinguish evidence from speculation.
+
+--------------------------------------------------
+ETHICIST AGENT
+--------------------------------------------------
+
+The Ethicist Agent should analyze topics through ethical frameworks.
+
+It may consider:
+
+- consequentialism
+- deontology
+- virtue ethics
+- justice
+- autonomy
+- harm
+- fairness
+- rights
+- societal consequences
+
+Do not force one ethical framework as universally correct.
+
+The agent should identify competing ethical considerations.
+
+--------------------------------------------------
+ANALYST AGENT
+--------------------------------------------------
+
+The Analyst Agent should provide structured general analysis.
+
+Focus on:
+
+- breaking complex problems into components
+- identifying assumptions
+- comparing perspectives
+- identifying trade-offs
+- summarizing evidence presented in the prompt
+- distinguishing facts, assumptions, and conclusions
+- identifying uncertainty
+
+The Analyst should not replace the future Judge AI.
+
+==================================================
+6. PROMPT DESIGN
+==================================================
+
+Keep prompts maintainable.
+
+Do not put giant prompt strings directly inside endpoint code.
+
+Use a clean structure such as:
+
+backend/app/agents/
+    base_agent.py
+    economist.py
+    lawyer.py
+    doctor.py
+    scientist.py
+    ethicist.py
+    analyst.py
+
+And/or:
+
+backend/app/agents/prompts/
+    economist.py
+    lawyer.py
+    doctor.py
+    scientist.py
+    ethicist.py
+    analyst.py
+
+Adapt to the current architecture.
+
+Keep role prompts separate from API routes.
+
+==================================================
+7. AGENT FACTORY / REGISTRY
+==================================================
+
+Create a centralized mechanism for selecting a core agent.
+
+For example:
+
+get_agent_by_role(role)
+
+or:
+
+AgentFactory.create(role)
+
+The exact design can follow the existing architecture.
+
+Requirements:
+
+Input:
+
+"economist"
+
+returns:
+
+EconomistAgent
+
+Input:
+
+"lawyer"
+
+returns:
+
+LawyerAgent
+
+etc.
+
+Supported roles:
+
+economist
+lawyer
+doctor
+scientist
+ethicist
+analyst
+
+Unsupported role:
+
+Return a controlled error.
+
+Do NOT create six separate selection systems.
+
+Use one centralized registry/factory.
+
+==================================================
+8. ROLE IDENTIFIERS
+==================================================
+
+Use stable machine-readable identifiers:
+
+economist
+lawyer
+doctor
+scientist
+ethicist
+analyst
+
+Do not rely on display names for internal logic.
+
+Display names can remain:
+
+Economist
+Lawyer
+Doctor
+Scientist
+Ethicist
+Analyst
+
+==================================================
+9. AGENT RESPONSE
+==================================================
+
+All agents should return the normalized LLM response from Module 3.
+
+Do not create six incompatible response formats.
+
+A response should contain enough information to identify:
+
+- agent
+- role
+- generated content
+- provider
+- model
+
+For example:
+
+{
+    "agent": "economist",
+    "role": "Economist",
+    "response": "...",
+    "provider": "groq",
+    "model": "..."
+}
+
+Use proper Pydantic response schemas.
+
+Do not expose:
+
+- API keys
+- raw provider responses
+- internal credentials
+
+==================================================
+10. TEST API ENDPOINT
+==================================================
+
+Create a protected testing endpoint for individual agents.
+
+For example:
+
+POST /api/v1/agents/test
+
+Request:
+
+{
+    "agent": "economist",
+    "message": "What are the economic effects of electric vehicles?"
+}
+
+Response:
+
+{
+    "agent": "economist",
+    "role": "Economist",
+    "response": "...",
+    "provider": "groq",
+    "model": "..."
+}
+
+The endpoint must:
+
+1. Require authentication.
+2. Validate the requested agent.
+3. Create the correct role-based agent.
+4. Send the user's message to that agent.
+5. Return the normalized response.
+
+This endpoint is ONLY for testing individual agents.
+
+Do NOT make it a debate endpoint.
+
+==================================================
+11. NO MULTI-AGENT LOGIC
+==================================================
+
+This is extremely important.
+
+The test endpoint must execute exactly ONE agent per request.
+
+Example:
+
+POST:
+
+{
+    "agent": "scientist",
+    "message": "..."
+}
+
+Only ScientistAgent executes.
+
+Do NOT execute:
+
+Scientist + Economist + Lawyer
+
+in the same request.
+
+Do not create agent conversations.
+
+Do not create debate rounds.
+
+Do not create orchestration.
+
+==================================================
+12. DATABASE INTEGRATION
+==================================================
+
+Use the existing Agent database records.
+
+Do not create duplicates.
+
+The existing seeded records should remain:
+
+Economist
+Lawyer
+Scientist
+Doctor
+Ethicist
+Analyst
+
+If appropriate, validate that the requested role exists and is active.
+
+However, do not unnecessarily query PostgreSQL for every simple agent factory operation if the architecture does not require it.
+
+Keep the distinction clear:
+
+Database Agent:
+    persistence/configuration metadata
+
+Python Agent:
+    runtime behavior
+
+Do not merge these responsibilities into one huge class.
+
+==================================================
+13. AUTHENTICATION
+==================================================
+
+Reuse the Module 2 authentication dependency.
+
+The test endpoint must use:
+
+Depends(get_current_user)
+
+or the project's equivalent.
+
+Do not implement authentication again.
+
+Unauthenticated request:
+
+401 Unauthorized
+
+Invalid token:
+
+401 Unauthorized
+
+==================================================
+14. INPUT VALIDATION
+==================================================
+
+Create a proper request schema.
+
+Example:
+
+{
+    "agent": "economist",
+    "message": "..."
+}
+
+Requirements:
+
+- agent required
+- message required
+- message cannot be empty
+- reasonable maximum message length
+- trim unnecessary whitespace
+- reject obviously invalid input
+
+Do not implement excessive validation.
+
+==================================================
+15. ERROR HANDLING
+==================================================
+
+Handle:
+
+Unsupported agent:
+
+400 or 404 depending on existing API conventions.
+
+Missing message:
+
+422
+
+Empty message:
+
+422
+
+Provider failure:
+
+controlled 5xx error
+
+LLM timeout:
+
+controlled timeout error
+
+Authentication failure:
+
+401
+
+Do not expose stack traces.
+
+Do not expose API keys.
+
+Do not expose internal provider errors unnecessarily.
+
+==================================================
+16. AGENT TESTING
+==================================================
+
+Create unit tests for all six agents.
+
+Tests must NOT make real Groq API calls.
+
+Mock the LLM provider.
+
+At minimum test:
+
+1. EconomistAgent uses economist system prompt.
+2. LawyerAgent uses lawyer system prompt.
+3. DoctorAgent uses doctor system prompt.
+4. ScientistAgent uses scientist system prompt.
+5. EthicistAgent uses ethicist system prompt.
+6. AnalystAgent uses analyst system prompt.
+
+Also test:
+
+7. Agent factory returns EconomistAgent.
+8. Agent factory returns LawyerAgent.
+9. Agent factory returns DoctorAgent.
+10. Agent factory returns ScientistAgent.
+11. Agent factory returns EthicistAgent.
+12. Agent factory returns AnalystAgent.
+13. Unsupported role is rejected.
+14. BaseAgent/provider abstraction is used.
+15. No agent directly imports Groq SDK.
+16. Responses are normalized.
+17. Test endpoint rejects unauthenticated requests.
+18. Test endpoint works with authenticated user + mocked provider.
+19. Empty message is rejected.
+20. Invalid agent is rejected.
+
+==================================================
+17. REAL GROQ TEST
+==================================================
+
+After unit tests pass, perform a real test using the configured Groq API.
+
+Test each of the six agents individually.
+
+Example:
+
+Economist:
+"What are the economic effects of electric vehicles?"
+
+Lawyer:
+"What legal considerations can arise when governments regulate AI?"
+
+Doctor:
+"What are general health considerations associated with sleep deprivation?"
+
+Scientist:
+"How should we distinguish correlation from causation?"
+
+Ethicist:
+"What ethical considerations arise when AI makes high-impact decisions?"
+
+Analyst:
+"What are the main trade-offs when governments regulate emerging technology?"
+
+Do not treat the generated answers as authoritative facts.
+
+The purpose of this test is to verify:
+
+- correct agent selection
+- correct role prompt
+- provider connection
+- normalized response
+
+Do not require all six tests to be automated against the real API.
+
+Manual verification is sufficient.
+
+==================================================
+18. FRONTEND
+==================================================
+
+Do NOT build the full debate UI.
+
+If a frontend test interface is useful, create only a minimal developer/test page.
+
+It may contain:
+
+Agent dropdown
+Message input
+Send button
+Response display
+
+Supported agents:
+
+Economist
+Lawyer
+Doctor
+Scientist
+Ethicist
+Analyst
+
+This page is optional.
+
+If implementing it would unnecessarily disturb the current frontend, skip it and use Swagger.
+
+Do not build:
+
+- debate interface
+- transcript
+- rounds
+- dashboard
+- analytics
+
+==================================================
+19. DATABASE MIGRATIONS
+==================================================
+
+Do not create a migration unless genuinely necessary.
+
+The existing Agent table should already contain the six core agents.
+
+Verify they still exist.
+
+Do not duplicate them.
+
+==================================================
+20. API DOCUMENTATION
+==================================================
+
+Ensure Swagger contains:
+
+POST /api/v1/agents/test
+
+It must show:
+
+- request schema
+- response schema
+- Bearer authentication
+- supported input fields
+
+Do not break existing:
+
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+GET /api/v1/auth/me
+GET /api/v1/health
+POST /api/v1/ai/test
+
+==================================================
+21. SECURITY
+==================================================
+
+Do not log:
+
+- JWT tokens
+- passwords
+- API keys
+- complete sensitive prompts if they contain user data
+
+Do not expose:
+
+- Groq API key
+- provider credentials
+- internal exceptions
+
+All LLM calls must remain server-side.
+
+The frontend must never receive the Groq API key.
+
+==================================================
+22. PERFORMANCE
+==================================================
+
+Do not introduce unnecessary:
+
+- background workers
+- queues
+- Redis state
+- caching
+- agent persistence
+
+A single request should simply be:
+
+HTTP request
+    ↓
+Authentication
+    ↓
+Agent factory
+    ↓
+BaseAgent
+    ↓
+Groq
+    ↓
+Response
+
+Keep it simple.
+
+==================================================
+23. README UPDATE
+==================================================
+
+Update README with:
+
+### Core Role-Based AI Agents
+
+Explain:
+
+- six core agents
+- each agent's purpose
+- role-based system prompts
+- agent factory/registry
+- BaseAgent relationship
+- Groq provider relationship
+- test endpoint
+
+Add a table:
+
+| Agent | Identifier | Purpose |
+|------|------|------|
+| Economist | economist | Economic analysis |
+| Lawyer | lawyer | Legal reasoning |
+| Doctor | doctor | Health/medical perspective |
+| Scientist | scientist | Scientific reasoning |
+| Ethicist | ethicist | Ethical analysis |
+| Analyst | analyst | General structured analysis |
+
+Update status:
+
+Implemented:
+
+✓ Project foundation
+✓ PostgreSQL
+✓ Redis
+✓ FastAPI
+✓ React
+✓ SQLAlchemy
+✓ Alembic
+✓ User/Debate/Agent models
+✓ Authentication
+✓ JWT
+✓ Password hashing
+✓ Protected routes
+✓ LLM provider abstraction
+✓ Groq provider
+✓ BaseAgent
+✓ Economist Agent
+✓ Lawyer Agent
+✓ Doctor Agent
+✓ Scientist Agent
+✓ Ethicist Agent
+✓ Analyst Agent
+✓ Agent factory/registry
+
+Not yet implemented:
+
+- Multi-agent debate orchestration
+- Debate rounds
+- LangGraph
+- WebSockets
+- Live transcript
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Debate results
+- Analytics dashboard
+- PDF reports
+- Custom agents
+
+==================================================
+24. DO NOT BREAK PREVIOUS MODULES
+==================================================
+
+After implementation verify:
+
+1. PostgreSQL works.
+2. Redis works.
+3. FastAPI starts.
+4. Frontend starts.
+5. Health endpoint works.
+6. Register works.
+7. Login works.
+8. /auth/me works.
+9. JWT authentication works.
+10. Existing /api/v1/ai/test still works.
+11. Groq provider still works.
+12. Existing six database Agent records still exist.
+13. Alembic remains valid.
+14. Docker Compose remains valid.
+
+Do not rewrite previous modules unnecessarily.
+
+==================================================
+25. ACTUAL VERIFICATION
+==================================================
+
+Do not simply say "implemented."
+
+Actually:
+
+1. Inspect the project.
+2. Implement the six agents.
+3. Run automated tests.
+4. Verify test endpoint authentication.
+5. Verify agent selection.
+6. Verify all six system prompts.
+7. Verify mocked responses.
+8. Verify existing Module 3 endpoint.
+9. Verify health.
+10. Verify authentication.
+11. If Groq credentials are configured, perform real requests for the six agents.
+12. Fix errors directly related to Module 4.
+
+Do not silently skip failed tests.
+
+Report actual results.
+
+==================================================
+26. STOP CONDITION
+==================================================
+
+When MODULE 4 is fully implemented and verified, STOP.
+
+Do NOT automatically implement:
+
+- Debate creation
+- Agent selection UI for actual debates
+- Multi-agent orchestration
+- LangGraph
+- Debate rounds
+- WebSockets
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument scoring
+- Judge AI
+- Analytics
+- PDF reports
+- Custom agents
+
+Those belong to later modules.
+
+==================================================
+27. FINAL REPORT
+==================================================
+
+At the end report:
+
+A. Files created/modified
+
+B. Six agents implemented
+
+C. Agent architecture
+
+D. Agent factory/registry
+
+E. System prompt architecture
+
+F. API endpoint
+
+G. Authentication used
+
+H. Database changes
+
+I. Dependencies added
+
+J. Automated tests performed
+
+K. Automated test results
+
+L. Real Groq tests performed
+
+M. Real Groq test results for each agent
+
+N. Any issues discovered
+
+O. Existing-module regression test results
+
+P. Exact next module
+
+The next module after this will be:
+
+MODULE 5 — Debate Creation + Agent Selection
+
+But DO NOT implement MODULE 5 in this task.

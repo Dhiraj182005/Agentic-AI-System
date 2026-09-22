@@ -1,0 +1,798 @@
+We have completed MODULE 0 — Project Foundation and MODULE 1 — Database Layer.
+
+The current implementation includes:
+
+- FastAPI backend
+- React + Vite + TypeScript + TailwindCSS frontend
+- PostgreSQL
+- Redis
+- Async SQLAlchemy
+- Alembic
+- User, Debate, and Agent models
+- Core agent seeding
+- CORS
+- Health endpoint
+
+Now implement ONLY:
+
+# MODULE 2 — AUTHENTICATION
+
+Do NOT implement:
+- LLM agents
+- LangGraph
+- Debate orchestration
+- WebSockets
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Analytics dashboard
+- PDF reports
+- Custom agents
+
+Those are later modules.
+
+==================================================
+1. FIRST INSPECT THE CURRENT PROJECT
+==================================================
+
+Before changing anything:
+
+1. Inspect the current backend and frontend.
+2. Read the existing User model.
+3. Read the existing database configuration.
+4. Read the existing API structure.
+5. Read the existing environment configuration.
+6. Read the existing frontend routing structure.
+7. Verify that the previous modules are actually working.
+8. Do not rewrite working infrastructure unnecessarily.
+
+If you discover an issue from MODULE 0/1, fix only issues that directly affect authentication.
+
+Do not expand the scope.
+
+==================================================
+2. AUTHENTICATION ARCHITECTURE
+==================================================
+
+Implement:
+
+Register
+   ↓
+Password Hashing
+   ↓
+PostgreSQL User
+   ↓
+Login
+   ↓
+Password Verification
+   ↓
+JWT Access Token
+   ↓
+Protected API
+   ↓
+Current User
+
+Use JWT-based authentication.
+
+Keep authentication modular so it can later protect:
+
+- debate creation
+- debate history
+- debate results
+- reports
+- custom agents
+
+==================================================
+3. USER MODEL
+==================================================
+
+Inspect the existing User model.
+
+It should contain approximately:
+
+id
+email
+password_hash
+created_at
+updated_at
+
+Requirements:
+
+- email must be unique
+- email should be normalized appropriately
+- password must NEVER be stored in plaintext
+- use a secure password hashing algorithm
+- use UUID or the existing robust primary key strategy
+- maintain the existing database architecture
+
+If the current User model already satisfies these requirements, do not unnecessarily modify it.
+
+If a migration is required, create an Alembic migration.
+
+==================================================
+4. PASSWORD HASHING
+==================================================
+
+Use a secure password hashing implementation.
+
+Preferred:
+
+Argon2 or bcrypt through a maintained Python security library.
+
+Do NOT implement your own hashing algorithm.
+
+Never store:
+
+password
+plain_password
+raw_password
+
+in the database.
+
+Only store:
+
+password_hash
+
+Password requirements should be reasonable for an academic application.
+
+At minimum:
+
+- minimum length validation
+- reject empty passwords
+- reject obviously invalid input
+
+Do not create absurdly complicated password rules.
+
+==================================================
+5. AUTHENTICATION MODULE STRUCTURE
+==================================================
+
+Create a clean structure such as:
+
+backend/app/
+│
+├── api/
+│   └── auth.py
+│
+├── core/
+│   ├── config.py
+│   └── security.py
+│
+├── schemas/
+│   └── auth.py
+│
+└── services/
+    └── auth_service.py
+
+Adapt this structure to the existing project rather than blindly duplicating files.
+
+Responsibilities:
+
+security.py
+- password hashing
+- password verification
+- JWT creation
+- JWT decoding/validation
+
+schemas/auth.py
+- register request
+- login request
+- token response
+- current user response
+
+auth_service.py
+- user creation
+- authentication
+- user lookup
+
+api/auth.py
+- HTTP endpoints
+
+==================================================
+6. JWT
+==================================================
+
+Implement JWT access tokens.
+
+Token should contain appropriate information such as:
+
+sub = user ID
+exp = expiration time
+
+Do not put sensitive information inside the JWT.
+
+Configuration should come from environment variables.
+
+Example:
+
+JWT_SECRET_KEY=
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+Do NOT hardcode the secret.
+
+For development, `.env.example` can contain:
+
+JWT_SECRET_KEY=change-me-in-development
+
+but the real `.env` must not be committed.
+
+==================================================
+7. API ENDPOINTS
+==================================================
+
+Implement:
+
+POST /api/v1/auth/register
+
+POST /api/v1/auth/login
+
+GET /api/v1/auth/me
+
+--------------------------------------------------
+REGISTER
+--------------------------------------------------
+
+Request:
+
+{
+    "email": "user@example.com",
+    "password": "securepassword"
+}
+
+Response should return safe user information.
+
+Example:
+
+{
+    "id": "...",
+    "email": "user@example.com",
+    "created_at": "..."
+}
+
+NEVER return password_hash.
+
+If the email already exists:
+
+Return an appropriate HTTP error such as:
+
+409 Conflict
+
+Do not leak unnecessary information.
+
+--------------------------------------------------
+LOGIN
+--------------------------------------------------
+
+Request:
+
+{
+    "email": "user@example.com",
+    "password": "securepassword"
+}
+
+Response:
+
+{
+    "access_token": "...",
+    "token_type": "bearer"
+}
+
+Use:
+
+Authorization: Bearer <token>
+
+for protected endpoints.
+
+If credentials are incorrect, return an appropriate authentication error.
+
+Do not reveal whether the email or password was specifically incorrect.
+
+--------------------------------------------------
+CURRENT USER
+--------------------------------------------------
+
+GET:
+
+/api/v1/auth/me
+
+Require:
+
+Authorization: Bearer <token>
+
+Return:
+
+{
+    "id": "...",
+    "email": "...",
+    "created_at": "..."
+}
+
+If the token is invalid or expired:
+
+Return HTTP 401.
+
+==================================================
+8. AUTHENTICATION DEPENDENCY
+==================================================
+
+Create a reusable FastAPI dependency such as:
+
+get_current_user()
+
+It should:
+
+1. Extract Bearer token.
+2. Decode JWT.
+3. Validate signature.
+4. Validate expiration.
+5. Extract user ID.
+6. Load user from PostgreSQL.
+7. Return the User object.
+8. Raise HTTP 401 if authentication fails.
+
+Later modules should be able to use:
+
+Depends(get_current_user)
+
+without implementing authentication logic again.
+
+==================================================
+9. FRONTEND AUTHENTICATION
+==================================================
+
+Now implement the minimum frontend authentication UI.
+
+Create:
+
+/login
+/register
+
+pages.
+
+Register page:
+
+- email
+- password
+- confirm password
+- register button
+- link to login
+
+Login page:
+
+- email
+- password
+- login button
+- link to register
+
+After successful login:
+
+- store the authentication token using a reasonable approach
+- redirect to the protected application/home area
+- maintain authentication state
+
+Do not store passwords.
+
+==================================================
+10. FRONTEND AUTH STATE
+==================================================
+
+Create a small authentication layer.
+
+For example:
+
+src/
+├── context/
+│   └── AuthContext.tsx
+│
+├── services/
+│   ├── api.ts
+│   └── auth.ts
+│
+└── components/
+    └── ProtectedRoute.tsx
+
+Adapt this to the existing project.
+
+The frontend should know:
+
+authenticated
+unauthenticated
+loading
+
+Do not create a huge state-management system for this.
+
+==================================================
+11. PROTECTED ROUTE
+==================================================
+
+Create a protected application route.
+
+For example:
+
+/
+
+or
+
+/app
+
+The exact route can follow the current project structure.
+
+Unauthenticated users should be redirected to:
+
+/login
+
+Authenticated users should be able to access the protected area.
+
+For now the protected page can simply show:
+
+AI Debate Arena
+
+Welcome, <email>
+
+Authentication Status:
+Authenticated
+
+Do NOT build the actual debate interface yet.
+
+==================================================
+12. LOGOUT
+==================================================
+
+Implement logout.
+
+After logout:
+
+- remove the frontend authentication state/token
+- redirect to login
+- protected routes must no longer be accessible
+
+Do not call this complete if logout only changes the UI while the token remains usable in the frontend.
+
+==================================================
+13. API CLIENT
+==================================================
+
+Create a centralized API client.
+
+It should:
+
+- use the backend base URL from environment configuration
+- attach Bearer token to authenticated requests
+- handle 401 responses appropriately
+
+Do not hardcode:
+
+http://localhost:8000
+
+throughout the application.
+
+Use frontend environment configuration.
+
+==================================================
+14. TOKEN STORAGE
+==================================================
+
+For this academic MVP, use a simple, documented approach.
+
+If storing the token in localStorage is used, clearly understand the XSS implications and ensure generated content is safely rendered.
+
+Prefer a more secure architecture such as HttpOnly cookies if it fits the current backend/frontend setup without creating unnecessary complexity.
+
+Whichever approach is selected:
+
+1. Document it.
+2. Keep it centralized.
+3. Never store passwords.
+4. Never expose secrets unnecessarily.
+
+==================================================
+15. CORS
+==================================================
+
+Use the existing CORS configuration.
+
+Make sure the frontend origin is configurable.
+
+Example:
+
+FRONTEND_URL=http://localhost:5173
+
+Do not use:
+
+allow_origins=["*"]
+
+for authenticated production behavior.
+
+==================================================
+16. DATABASE
+==================================================
+
+Use the existing PostgreSQL database.
+
+Do not introduce another database.
+
+Do not use in-memory users.
+
+Registration must actually create a PostgreSQL User.
+
+Login must actually authenticate against PostgreSQL.
+
+==================================================
+17. REDIS
+==================================================
+
+Do not add unnecessary Redis authentication logic yet.
+
+Redis is already part of the infrastructure.
+
+Leave its existing health functionality intact.
+
+Do not introduce sessions in Redis unless there is a genuine architectural reason.
+
+JWT authentication is sufficient for this module.
+
+==================================================
+18. SECURITY REQUIREMENTS
+==================================================
+
+Implement:
+
+- password hashing
+- JWT validation
+- token expiration
+- email validation
+- unique email
+- 401 for invalid authentication
+- no password/hash in responses
+- no secrets in source code
+- no API keys in frontend
+- reasonable request validation
+
+Never log:
+
+- passwords
+- password hashes
+- JWT tokens
+- API keys
+
+==================================================
+19. TESTS
+==================================================
+
+Create backend authentication tests.
+
+At minimum test:
+
+1. Register valid user.
+2. Register duplicate email.
+3. Register invalid email.
+4. Register invalid password.
+5. Password is hashed.
+6. Login with correct credentials.
+7. Login with incorrect password.
+8. Login with unknown email.
+9. `/auth/me` with valid token.
+10. `/auth/me` without token.
+11. `/auth/me` with invalid token.
+12. `/auth/me` with expired token.
+13. Logout behavior on frontend.
+
+Tests must use a test database/configuration appropriately.
+
+Do not destroy the development database while running tests.
+
+==================================================
+20. FRONTEND TESTING / VERIFICATION
+==================================================
+
+Actually verify this flow:
+
+Register
+   ↓
+User created in PostgreSQL
+   ↓
+Login
+   ↓
+JWT received
+   ↓
+Protected page
+   ↓
+GET /auth/me
+   ↓
+User information displayed
+   ↓
+Logout
+   ↓
+Login page
+
+Do not fake authentication state.
+
+==================================================
+21. DATABASE VERIFICATION
+==================================================
+
+After registering a test user, verify the database contains:
+
+id
+email
+password_hash
+created_at
+updated_at
+
+Verify:
+
+password != password_hash
+
+and that the password hash is not exposed by the API.
+
+==================================================
+22. API DOCUMENTATION
+==================================================
+
+Make sure FastAPI Swagger/OpenAPI correctly documents:
+
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+GET /api/v1/auth/me
+
+Configure the Bearer authentication scheme appropriately if needed.
+
+==================================================
+23. DO NOT BREAK EXISTING MODULES
+==================================================
+
+After authentication is implemented, verify that:
+
+GET /api/v1/health
+
+still works.
+
+PostgreSQL still works.
+
+Redis still works.
+
+Frontend still starts.
+
+Docker Compose still works.
+
+Alembic still works.
+
+Agent seed data still exists.
+
+Do not modify unrelated functionality.
+
+==================================================
+24. README UPDATE
+==================================================
+
+Update the project's README with:
+
+### Authentication
+
+Explain:
+
+- registration
+- login
+- JWT
+- password hashing
+- protected endpoints
+- logout
+
+### New Environment Variables
+
+Document:
+
+JWT_SECRET_KEY
+JWT_ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES
+
+### API
+
+Document:
+
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+GET /api/v1/auth/me
+
+### Current Implementation Status
+
+Implemented:
+
+✓ Project foundation
+✓ PostgreSQL
+✓ Redis
+✓ FastAPI
+✓ React
+✓ SQLAlchemy
+✓ Alembic
+✓ User/Debate/Agent models
+✓ Authentication
+✓ JWT
+✓ Password hashing
+✓ Protected routes
+
+Not yet implemented:
+
+- AI agents
+- LangGraph
+- Debate orchestration
+- WebSockets
+- Claim extraction
+- Evidence retrieval
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Results dashboard
+- Analytics
+- PDF reports
+
+==================================================
+25. ACTUAL VERIFICATION
+==================================================
+
+Do not simply say "implemented."
+
+Actually run the project/tests.
+
+Verify:
+
+1. Backend starts.
+2. Frontend starts.
+3. PostgreSQL starts.
+4. Redis starts.
+5. Alembic works.
+6. Register works.
+7. Login works.
+8. `/auth/me` works with valid JWT.
+9. `/auth/me` fails without JWT.
+10. `/auth/me` fails with invalid JWT.
+11. Duplicate registration fails correctly.
+12. Password is hashed.
+13. Logout works.
+14. Protected route works.
+15. Health endpoint still works.
+16. Existing database models still work.
+
+Fix errors you discover.
+
+==================================================
+26. STOP CONDITION
+==================================================
+
+When authentication is fully working, STOP.
+
+Do NOT automatically implement:
+
+- Debate creation
+- Agent selection
+- LLM providers
+- LangGraph
+- WebSockets
+- Evidence
+- Fallacies
+- Judge AI
+
+Those belong to later modules.
+
+At the end report:
+
+A. Files created/modified
+B. Authentication architecture
+C. API endpoints
+D. Database changes/migrations
+E. Frontend changes
+F. Tests performed
+G. Test results
+H. Any issues discovered
+I. Exact next module
+
+The next module after this will be:
+
+MODULE 3 — LLM Provider + Base Agent
+
+But do not implement MODULE 3 in this task.
