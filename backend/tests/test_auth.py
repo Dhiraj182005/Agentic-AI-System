@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 import httpx
 from httpx import ASGITransport
@@ -8,7 +9,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.config import get_settings
 from app.core.security import create_access_token, decode_access_token, hash_password, verify_password
 
-TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/aidebate_test"
+TEST_DB_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/aidebate_test",
+)
 
 _test_engine = None
 _test_session = None

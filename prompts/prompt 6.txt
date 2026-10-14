@@ -1,0 +1,1348 @@
+We have completed and verified:
+
+✓ MODULE 0 — Project Foundation
+✓ MODULE 1 — Database Layer
+✓ MODULE 2 — Authentication
+✓ MODULE 3 — LLM Provider + Base Agent
+✓ MODULE 4 — Core Role-Based AI Agents
+✓ MODULE 5 — Debate Creation + Agent Selection
+
+Current working system:
+
+React Frontend
+    ↓
+FastAPI
+    ↓
+JWT Authentication
+    ↓
+Debate Creation
+    ↓
+Agent Selection
+    ↓
+PostgreSQL
+    ↓
+Six Role-Based Agents
+    ↓
+BaseAgent
+    ↓
+GroqProvider
+    ↓
+Groq API
+
+Six core agents:
+
+- Economist
+- Lawyer
+- Doctor
+- Scientist
+- Ethicist
+- Analyst
+
+MODULE 5 currently allows an authenticated user to:
+
+- create a debate
+- enter a topic
+- configure debate settings
+- manually select agents
+- use AUTO agent selection
+- store the debate in PostgreSQL
+- store debate-agent relationships
+- view their own debates
+- view debate details
+
+IMPORTANT:
+A debate currently does NOT execute automatically.
+
+==================================================
+MODULE 6 — DEBATE ORCHESTRATION + MULTI-AGENT DEBATE ENGINE
+==================================================
+
+This module introduces the actual multi-agent debate execution.
+
+The goal is:
+
+Created Debate
+      ↓
+Load Debate
+      ↓
+Load Selected Agents
+      ↓
+Initialize Runtime Agents
+      ↓
+Round 1
+      ↓
+Agent Responses
+      ↓
+Round 2
+      ↓
+Rebuttals
+      ↓
+...
+      ↓
+Final Debate Transcript
+      ↓
+Debate Completed
+
+IMPORTANT:
+
+This module is ONLY responsible for:
+
+- debate orchestration
+- debate rounds
+- agent turn ordering
+- agent responses
+- rebuttal context
+- transcript persistence
+- debate execution state
+- stopping/completion
+
+DO NOT implement:
+
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Argument scoring
+- Judge AI
+- Winner selection
+- Confidence scoring
+- Analytics
+- PDF reports
+- Custom agents
+- Intelligent agent selection
+- Advanced LangGraph workflows unless absolutely necessary
+
+Those belong to later modules.
+
+==================================================
+1. FIRST INSPECT THE CURRENT PROJECT
+==================================================
+
+Before changing anything:
+
+1. Inspect Debate model.
+2. Inspect Debate-Agent relationship.
+3. Inspect Agent model.
+4. Inspect all six runtime agents.
+5. Inspect BaseAgent.
+6. Inspect LLM provider abstraction.
+7. Inspect GroqProvider.
+8. Inspect authentication.
+9. Inspect debate service.
+10. Inspect debate API routes.
+11. Inspect frontend debate pages.
+12. Inspect existing Alembic migrations.
+13. Inspect existing tests.
+14. Verify Modules 0–5 are working.
+
+Do NOT rewrite working code.
+
+Make the smallest architecture changes required.
+
+==================================================
+2. DEBATE ENGINE RESPONSIBILITY
+==================================================
+
+Create a dedicated orchestration layer.
+
+Suggested structure:
+
+backend/app/
+│
+├── orchestration/
+│   ├── __init__.py
+│   ├── debate_engine.py
+│   ├── round_manager.py
+│   └── turn_manager.py
+│
+├── services/
+│   └── debate_service.py
+│
+└── api/
+    └── debates.py
+
+Adapt this to the existing project.
+
+Responsibilities:
+
+DebateEngine:
+- execute a complete debate
+- manage lifecycle
+- coordinate rounds
+
+RoundManager:
+- manage individual rounds
+
+TurnManager:
+- determine which agent speaks next
+
+Do not create abstractions that provide no practical value.
+
+==================================================
+3. DEBATE EXECUTION MODEL
+==================================================
+
+A debate consists of:
+
+Debate
+    ↓
+Rounds
+    ↓
+Turns
+    ↓
+Agent responses
+
+Create persistent models if they do not already exist.
+
+Recommended:
+
+debate_rounds
+
+Fields:
+
+- id
+- debate_id
+- round_number
+- status
+- started_at
+- completed_at
+- created_at
+
+debate_messages
+
+Fields:
+
+- id
+- debate_id
+- round_id
+- agent_id
+- turn_number
+- message_type
+- content
+- created_at
+
+Possible message_type values:
+
+- opening
+- argument
+- rebuttal
+- closing
+
+Use the simplest useful structure.
+
+Do not create separate tables for every message type.
+
+==================================================
+4. DATABASE RELATIONSHIPS
+==================================================
+
+Conceptual structure:
+
+User
+ │
+ └── Debates
+       │
+       ├── DebateAgents
+       │       └── Agent
+       │
+       └── DebateRounds
+               │
+               └── DebateMessages
+                       │
+                       └── Agent
+
+A Debate has:
+
+many Agents
+many Rounds
+many Messages
+
+A Round belongs to exactly one Debate.
+
+A Message belongs to:
+
+- Debate
+- Round
+- Agent
+
+Ensure foreign keys are correct.
+
+Add indexes for:
+
+- debate_id
+- round_id
+- agent_id
+- round_number
+
+Prevent invalid duplicate relationships where appropriate.
+
+==================================================
+5. MIGRATION
+==================================================
+
+Create Alembic migrations for the new tables.
+
+Do not manually modify the production database.
+
+Run:
+
+alembic upgrade head
+
+Verify migration succeeds.
+
+Do not alter unrelated tables.
+
+==================================================
+6. DEBATE STATUS
+==================================================
+
+Use the existing Debate status system if possible.
+
+At minimum support:
+
+created
+running
+completed
+failed
+
+If the current model already has suitable status values, reuse them.
+
+Lifecycle:
+
+created
+   ↓
+running
+   ↓
+completed
+
+If an unrecoverable execution error occurs:
+
+running
+   ↓
+failed
+
+Do not silently mark failed debates as completed.
+
+==================================================
+7. ROUND STATUS
+==================================================
+
+Rounds should have their own state.
+
+Suggested:
+
+pending
+running
+completed
+failed
+
+Lifecycle:
+
+pending
+   ↓
+running
+   ↓
+completed
+
+If execution fails:
+
+running
+   ↓
+failed
+
+==================================================
+8. DEBATE CONFIGURATION
+==================================================
+
+Use the configuration stored in Module 5:
+
+- topic
+- selected agents
+- total_rounds
+- mode
+- domain_tags
+- verify_evidence
+- expert_selection_mode
+
+For this module:
+
+verify_evidence MUST NOT trigger evidence retrieval.
+
+Simply preserve the configuration for later modules.
+
+==================================================
+9. START DEBATE ENDPOINT
+==================================================
+
+Create:
+
+POST /api/v1/debates/{debate_id}/start
+
+Require authentication.
+
+Verify the debate belongs to the authenticated user.
+
+Behavior:
+
+1. Load debate.
+2. Verify status is `created`.
+3. Load selected agents.
+4. Initialize runtime agents.
+5. Change status to `running`.
+6. Execute configured rounds.
+7. Persist every agent response.
+8. Complete the debate.
+9. Return final execution status.
+
+Do NOT allow starting:
+
+- another user's debate
+- completed debate
+- failed debate unless explicit retry support is implemented
+- already running debate
+
+Return appropriate HTTP errors.
+
+==================================================
+10. DO NOT RUN DEBATES DURING CREATION
+==================================================
+
+This rule is critical.
+
+POST /api/v1/debates
+
+must ONLY create the debate.
+
+It must NOT call:
+
+Groq
+BaseAgent
+DebateEngine
+
+The only endpoint that starts execution in this module is:
+
+POST /api/v1/debates/{debate_id}/start
+
+==================================================
+11. AGENT TURN ORDER
+==================================================
+
+Use the order in which agents are associated with the debate.
+
+Example:
+
+1. Economist
+2. Lawyer
+3. Scientist
+4. Ethicist
+
+For every round:
+
+Economist
+ ↓
+Lawyer
+ ↓
+Scientist
+ ↓
+Ethicist
+
+Then next round:
+
+Economist
+ ↓
+Lawyer
+ ↓
+Scientist
+ ↓
+Ethicist
+
+Do NOT randomly reorder agents.
+
+Do NOT dynamically select agents using an LLM.
+
+Do NOT remove agents during the debate.
+
+Keep turn order deterministic.
+
+==================================================
+12. ROUND STRUCTURE
+==================================================
+
+Implement a simple deterministic structure.
+
+Example for 3 rounds:
+
+ROUND 1
+- Each agent gives an opening argument.
+
+ROUND 2
+- Each agent gives a rebuttal based on previous arguments.
+
+ROUND 3
+- Each agent gives a final position.
+
+Use message_type:
+
+round 1 → opening
+round 2 → rebuttal
+final round → closing
+
+If total_rounds differs:
+
+- first round = opening
+- middle rounds = rebuttal
+- final round = closing
+
+Do not create different debate logic for every possible round count.
+
+==================================================
+13. AGENT CONTEXT
+==================================================
+
+The agent must receive enough context to respond meaningfully.
+
+Round 1 context:
+
+- debate topic
+- role identity
+- instructions to provide an opening argument
+
+Round 2+ context:
+
+- debate topic
+- role identity
+- previous relevant debate messages
+- instruction to respond/rebut
+
+Final round:
+
+- debate topic
+- previous messages
+- instruction to provide final position
+
+Use a controlled context format.
+
+Do NOT dump unlimited conversation history into every request.
+
+For now, use the existing persisted transcript as the source of context.
+
+If context becomes too large, implement a reasonable limit.
+
+Do not build sophisticated summarization yet.
+
+==================================================
+14. PROMPT STRUCTURE
+==================================================
+
+Do NOT replace the existing role-specific system prompts.
+
+The runtime prompt should conceptually be:
+
+SYSTEM:
+Existing role-specific system prompt
+
+USER:
+Debate topic:
+...
+
+Previous debate transcript:
+...
+
+Current round:
+...
+
+Your task:
+...
+
+For opening:
+"Present your strongest reasoned position on the topic."
+
+For rebuttal:
+"Respond to the arguments presented by the other participants. Identify disagreements and provide your reasoning."
+
+For closing:
+"Provide your final position after considering the preceding discussion."
+
+The agent must remain within its assigned professional perspective.
+
+==================================================
+15. IMPORTANT: NO FAKE REBUTTALS
+==================================================
+
+A rebuttal must actually receive previous arguments as context.
+
+Do NOT generate generic:
+
+"Some people believe X..."
+
+without providing the previous transcript.
+
+The sequence must be:
+
+Agent A response
+    ↓
+persist
+    ↓
+Agent B receives Agent A response
+    ↓
+Agent B response
+    ↓
+persist
+    ↓
+Agent C receives A + B
+    ↓
+Agent C response
+
+etc.
+
+==================================================
+16. TRANSCRIPT PERSISTENCE
+==================================================
+
+Every generated message must be persisted immediately after successful generation.
+
+Do not wait until the entire debate completes before saving all messages.
+
+Example:
+
+Agent 1 generates
+ ↓
+save message
+
+Agent 2 generates
+ ↓
+save message
+
+Agent 3 generates
+ ↓
+save message
+
+This prevents losing the entire transcript if a later request fails.
+
+==================================================
+17. MESSAGE ORDER
+==================================================
+
+Every message should have:
+
+- debate_id
+- round_id
+- agent_id
+- turn_number
+- message_type
+- content
+- created_at
+
+Ordering should be deterministic using:
+
+round_number
++
+turn_number
+
+Do not rely only on created_at for transcript ordering.
+
+==================================================
+18. CONCURRENCY
+==================================================
+
+Do NOT execute agents in parallel in this module.
+
+Agents must execute sequentially.
+
+Reason:
+
+Later agents need previous agents' responses as context.
+
+Correct:
+
+Agent A
+ ↓
+Agent B
+ ↓
+Agent C
+
+Incorrect:
+
+Agent A ─┐
+Agent B ─┼─ parallel
+Agent C ─┘
+
+==================================================
+19. LLM CALLS
+==================================================
+
+Use:
+
+AgentFactory
+    ↓
+Role Agent
+    ↓
+BaseAgent
+    ↓
+BaseLLMProvider
+    ↓
+GroqProvider
+
+Do NOT import the Groq SDK into DebateEngine.
+
+Do NOT duplicate provider logic.
+
+DebateEngine should only know how to ask a runtime agent to generate a response.
+
+==================================================
+20. FAILURE HANDLING
+==================================================
+
+If one agent fails:
+
+1. Log the failure safely.
+2. Mark the current round as failed.
+3. Mark the debate as failed.
+4. Do not mark debate completed.
+5. Preserve all previously generated messages.
+
+Do not delete the transcript.
+
+Do not expose internal exceptions to the frontend.
+
+Return a controlled error response.
+
+Do NOT automatically retry multiple times in this module unless the existing provider layer already provides safe retry handling.
+
+Keep retry behavior simple.
+
+==================================================
+21. IDEMPOTENCY / DUPLICATE START
+==================================================
+
+Prevent:
+
+POST /start
+
+from starting the same debate twice.
+
+If status is:
+
+running
+
+return an appropriate conflict response.
+
+If status is:
+
+completed
+
+return an appropriate conflict response.
+
+Do not create duplicate rounds.
+
+==================================================
+22. TRANSACTION BOUNDARIES
+==================================================
+
+Do NOT hold one giant database transaction around the entire debate.
+
+That would be dangerous for long-running LLM calls.
+
+Instead:
+
+- update status
+- commit
+- generate response
+- save message
+- commit
+- continue
+
+Keep database transactions short.
+
+==================================================
+23. ASYNC IMPLEMENTATION
+==================================================
+
+The existing backend uses async SQLAlchemy.
+
+Keep the orchestration compatible with the async architecture.
+
+Use async methods for:
+
+- database operations
+- LLM calls
+
+Do not introduce blocking synchronous database operations.
+
+==================================================
+24. BACKGROUND EXECUTION
+==================================================
+
+For the first implementation, choose a simple architecture.
+
+The start endpoint may execute the debate synchronously if the current project can tolerate it.
+
+However, if the existing architecture already has a safe background execution mechanism, use it.
+
+Do NOT introduce Celery, Kafka, RabbitMQ, or another distributed task system just for this module.
+
+Do not add unnecessary infrastructure.
+
+If the endpoint executes synchronously:
+
+POST /start
+
+should return only after the debate has completed or failed.
+
+Document this behavior.
+
+==================================================
+25. WEBSOCKETS
+==================================================
+
+Do NOT implement WebSockets yet.
+
+The transcript can be retrieved using HTTP.
+
+Real-time streaming will be implemented later.
+
+==================================================
+26. TRANSCRIPT ENDPOINT
+==================================================
+
+Implement:
+
+GET /api/v1/debates/{debate_id}/messages
+
+Require authentication and ownership.
+
+Return messages ordered by:
+
+round_number
+then
+turn_number
+
+Example:
+
+{
+    "debate_id": "...",
+    "messages": [
+        {
+            "id": "...",
+            "round_number": 1,
+            "turn_number": 1,
+            "agent": {
+                "id": "...",
+                "name": "Economist",
+                "role": "economist"
+            },
+            "message_type": "opening",
+            "content": "...",
+            "created_at": "..."
+        }
+    ]
+}
+
+Do not expose internal provider information.
+
+==================================================
+27. ROUND ENDPOINT
+==================================================
+
+Implement:
+
+GET /api/v1/debates/{debate_id}/rounds
+
+Return:
+
+- round number
+- status
+- started_at
+- completed_at
+
+Do not expose unnecessary internal fields.
+
+==================================================
+28. DEBATE DETAIL UPDATE
+==================================================
+
+Update the existing:
+
+GET /api/v1/debates/{debate_id}
+
+so it can include:
+
+- status
+- round count
+- selected agents
+- created_at
+- started_at if available
+- completed_at if available
+
+Do not include the entire transcript in the detail endpoint.
+
+Use the messages endpoint for that.
+
+==================================================
+29. FRONTEND
+==================================================
+
+Update the existing debate details page.
+
+Add:
+
+START DEBATE button
+
+Only show it when:
+
+status = created
+
+When clicked:
+
+POST /api/v1/debates/{id}/start
+
+Show:
+
+- starting state
+- running state
+- completed state
+- failed state
+
+Do not fake progress.
+
+==================================================
+30. DEBATE TRANSCRIPT UI
+==================================================
+
+Add a simple transcript view.
+
+Display:
+
+Round 1
+  Economist
+  message
+
+  Lawyer
+  message
+
+Round 2
+  Economist
+  message
+
+etc.
+
+Use actual API data.
+
+Do NOT fabricate responses.
+
+Do NOT implement advanced animations.
+
+==================================================
+31. START BUTTON SAFETY
+==================================================
+
+Disable the Start button while execution is active.
+
+Do not allow multiple simultaneous start requests from the same page.
+
+Backend must still enforce this.
+
+Frontend protection is not sufficient.
+
+==================================================
+32. FRONTEND REFRESH
+==================================================
+
+If the user refreshes a debate page while:
+
+status = running
+
+the frontend must fetch the current status from the backend.
+
+Do not assume the state from React memory.
+
+==================================================
+33. TESTS
+==================================================
+
+Create comprehensive backend tests.
+
+At minimum test:
+
+1. Debate starts successfully.
+2. Unauthenticated user cannot start.
+3. User cannot start another user's debate.
+4. Already running debate cannot start again.
+5. Completed debate cannot start again.
+6. Correct agents are loaded.
+7. Agent order is deterministic.
+8. Correct number of rounds is created.
+9. Round 1 uses opening message type.
+10. Middle rounds use rebuttal message type.
+11. Final round uses closing message type.
+12. Agent responses are generated sequentially.
+13. Later agents receive previous messages.
+14. Messages are persisted immediately.
+15. Message ordering is correct.
+16. Debate status changes to running.
+17. Debate status changes to completed.
+18. LLM failure marks round failed.
+19. LLM failure marks debate failed.
+20. Previous messages remain after failure.
+21. No duplicate rounds on repeated start.
+22. Transcript endpoint returns ordered messages.
+23. Round endpoint returns round status.
+24. User cannot access another user's transcript.
+25. Debate creation from Module 5 still works.
+26. Existing authentication tests pass.
+27. Existing Module 3 tests pass.
+28. Existing Module 4 tests pass.
+
+Mock the LLM provider in automated tests.
+
+Do NOT use real Groq API calls in the automated test suite.
+
+==================================================
+34. TEST THE ACTUAL AGENT CONTEXT
+==================================================
+
+Use mocked agents to verify:
+
+Round 1:
+
+Agent A receives:
+- topic
+- opening instruction
+
+Agent B receives:
+- topic
+- Agent A's previous message
+
+Round 2:
+
+Agent A receives previous round messages.
+
+Verify that the orchestrator constructs the context correctly.
+
+This is more important than simply checking that `generate_response()` was called.
+
+==================================================
+35. REAL GROQ VERIFICATION
+==================================================
+
+After automated tests pass, run ONE small real debate using Groq.
+
+Use:
+
+2 or 3 agents
+
+and:
+
+2 rounds
+
+to reduce API usage.
+
+Example:
+
+Topic:
+"Should college students be required to learn AI tools?"
+
+Agents:
+
+Economist
+Scientist
+Ethicist
+
+Rounds:
+
+2
+
+Verify:
+
+Round 1:
+all agents respond.
+
+Round 2:
+all agents receive previous arguments and respond.
+
+Verify PostgreSQL contains:
+
+1 Debate
+2 DebateRounds
+6 DebateMessages
+
+for 3 agents × 2 rounds.
+
+Do not run a huge debate during testing.
+
+==================================================
+36. DATABASE VERIFICATION
+==================================================
+
+After the real test verify:
+
+debates:
+- status = completed
+
+debate_rounds:
+- round 1 = completed
+- round 2 = completed
+
+debate_messages:
+- correct agent IDs
+- correct round IDs
+- correct turn numbers
+- correct message types
+- non-empty content
+
+Verify transcript ordering.
+
+==================================================
+37. API DOCUMENTATION
+==================================================
+
+Swagger should contain:
+
+POST /api/v1/debates/{debate_id}/start
+
+GET /api/v1/debates/{debate_id}/messages
+
+GET /api/v1/debates/{debate_id}/rounds
+
+Existing debate endpoints must remain functional.
+
+All protected endpoints must use Bearer authentication.
+
+==================================================
+38. SECURITY
+==================================================
+
+Do not log:
+
+- passwords
+- JWT tokens
+- Groq API key
+- sensitive credentials
+
+Do not expose:
+
+- provider credentials
+- internal stack traces
+- raw exception details
+
+Ensure users can only execute and inspect their own debates.
+
+==================================================
+39. PERFORMANCE
+==================================================
+
+Do not introduce unnecessary infrastructure.
+
+Do not add:
+
+- Kafka
+- RabbitMQ
+- Celery
+- Redis queues
+- Kubernetes
+- microservices
+
+The current architecture is sufficient.
+
+Keep the orchestration service modular so background execution can be added later if needed.
+
+==================================================
+40. README UPDATE
+==================================================
+
+Add:
+
+### Debate Orchestration
+
+Explain:
+
+- debate lifecycle
+- rounds
+- sequential agent execution
+- turn ordering
+- transcript persistence
+- debate status
+- failure handling
+
+Explain that:
+
+Agents execute sequentially because later agents need previous responses as context.
+
+Document endpoints:
+
+POST /api/v1/debates/{debate_id}/start
+GET /api/v1/debates/{debate_id}/messages
+GET /api/v1/debates/{debate_id}/rounds
+
+Update implementation status:
+
+Implemented:
+
+✓ Project foundation
+✓ PostgreSQL
+✓ Redis
+✓ FastAPI
+✓ React
+✓ SQLAlchemy
+✓ Alembic
+✓ Authentication
+✓ JWT
+✓ Password hashing
+✓ LLM provider abstraction
+✓ Groq provider
+✓ BaseAgent
+✓ Six role-based agents
+✓ Agent factory
+✓ Debate creation
+✓ Agent selection
+✓ Debate-agent relationships
+✓ Debate ownership
+✓ Debate orchestration
+✓ Debate rounds
+✓ Sequential agent turns
+✓ Debate transcript persistence
+
+Not yet implemented:
+
+- WebSockets
+- Real-time transcript streaming
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Argument scoring
+- Judge AI
+- Winner selection
+- Confidence scoring
+- Analytics dashboard
+- PDF reports
+- Custom agents
+
+==================================================
+41. REGRESSION TESTING
+==================================================
+
+After implementation verify:
+
+✓ PostgreSQL works
+✓ Redis works
+✓ FastAPI starts
+✓ Frontend starts
+✓ Health endpoint works
+✓ Registration works
+✓ Login works
+✓ /auth/me works
+✓ Groq provider works
+✓ All six agents work
+✓ Debate creation works
+✓ Agent selection works
+✓ Debate list works
+✓ Debate details work
+✓ Alembic works
+✓ Docker Compose works
+✓ Previous tests pass
+
+Do not break Modules 0–5.
+
+==================================================
+42. ACTUAL VERIFICATION
+==================================================
+
+Do not simply say "implemented."
+
+Actually:
+
+1. Inspect the project.
+2. Implement Module 6.
+3. Create migration if required.
+4. Run migration.
+5. Run automated tests.
+6. Start backend.
+7. Start frontend.
+8. Create a test debate.
+9. Start the debate.
+10. Verify actual Groq responses.
+11. Verify sequential agent execution.
+12. Verify multiple rounds.
+13. Verify transcript persistence.
+14. Verify PostgreSQL records.
+15. Verify transcript endpoint.
+16. Verify round endpoint.
+17. Verify ownership/security.
+18. Verify failed execution behavior if practical.
+19. Run regression tests for Modules 0–5.
+20. Fix errors directly related to Module 6.
+
+Do not fabricate test results.
+
+==================================================
+43. STOP CONDITION
+==================================================
+
+When MODULE 6 is fully implemented and verified, STOP.
+
+DO NOT automatically implement:
+
+- WebSockets
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Winner selection
+- Analytics
+- PDF reports
+- Custom agents
+
+==================================================
+44. FINAL REPORT
+==================================================
+
+At the end report:
+
+A. Files created/modified
+
+B. Database schema changes
+
+C. Alembic migration
+
+D. Debate engine architecture
+
+E. Round architecture
+
+F. Turn ordering
+
+G. Transcript architecture
+
+H. API endpoints
+
+I. Frontend changes
+
+J. Authentication/ownership handling
+
+K. Automated tests performed
+
+L. Automated test results
+
+M. Real Groq debate performed
+
+N. Real debate results
+
+O. Database verification
+
+P. Regression results for Modules 0–5
+
+Q. Issues discovered and fixes
+
+R. Exact next module
+
+The next module after this will be:
+
+MODULE 7 — Live Debate Streaming + WebSockets
+
+But DO NOT implement MODULE 7 in this task.

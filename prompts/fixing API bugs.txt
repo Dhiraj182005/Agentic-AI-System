@@ -1,0 +1,41 @@
+Investigate the 502 Bad Gateway returned by:
+
+POST /api/v1/debates/{debate_id}/claims/extract
+
+The FastAPI server starts successfully, but the claim extraction endpoint returns 502.
+
+Do NOT change the architecture yet.
+
+Trace the complete request path:
+
+API route
+→ claim extraction service
+→ existing LLM provider
+→ Groq
+→ response parsing
+→ claim persistence
+
+Find the exact underlying exception causing the 502.
+
+Important:
+- Use the existing LLM provider abstraction.
+- Do not create a new Groq client.
+- Do not change authentication.
+- Do not add Google Fact Check.
+- Do not bypass the LLM.
+- Do not return fake claims.
+- Do not hide the original exception.
+
+Temporarily improve error logging if necessary so the backend terminal clearly shows the root cause.
+
+Then fix ONLY the root cause.
+
+After fixing, verify:
+1. POST /api/v1/debates/{debate_id}/claims/extract returns 200.
+2. Claims are actually stored in PostgreSQL.
+3. GET /api/v1/debates/{debate_id}/claims returns them.
+4. Existing Groq functionality still works.
+5. Existing debate functionality is unaffected.
+
+Report the exact root cause and files changed.
+STOP after fixing this issue.

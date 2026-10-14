@@ -1,9 +1,11 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
 from app.agents.factory import UnsupportedAgentError, get_agent_by_role
+from app.db.database import get_db
 from app.llm.base import (
     LLMConfigurationError,
     LLMProviderAPIError,
@@ -11,11 +13,20 @@ from app.llm.base import (
     LLMTimeoutError,
 )
 from app.models.user import User
-from app.schemas.agents import AgentTestRequest, AgentTestResponse
+from app.schemas.agents import AgentTestRequest, AgentTestResponse, CoreAgentResponse
+from app.services.agent_service import list_active_core_agents
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+@router.get("", response_model=list[CoreAgentResponse])
+async def list_agents(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await list_active_core_agents(db)
 
 
 @router.post("/test", response_model=AgentTestResponse)

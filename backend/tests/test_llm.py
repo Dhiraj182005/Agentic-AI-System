@@ -24,7 +24,10 @@ from app.llm.base import (
 from app.llm.factory import get_llm_provider, SUPPORTED_PROVIDERS
 from app.llm.providers.groq_provider import GroqProvider
 
-TEST_DB_URL = "postgresql+asyncpg://postgres:postgres@localhost:5432/aidebate_test"
+TEST_DB_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/aidebate_test",
+)
 
 _test_engine = None
 _test_session = None

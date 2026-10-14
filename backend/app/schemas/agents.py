@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field, field_validator
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AgentTestRequest(BaseModel):
@@ -20,3 +22,12 @@ class AgentTestResponse(BaseModel):
     response: str
     provider: str
     model: str
+
+
+class CoreAgentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    role: str
+    description: str

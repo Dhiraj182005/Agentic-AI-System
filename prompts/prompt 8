@@ -1,0 +1,861 @@
+We are continuing the AI Debate Arena project.
+
+COMPLETED MODULES:
+- MODULE 0 — Project Foundation
+- MODULE 1 — Database Layer
+- MODULE 2 — Authentication
+- MODULE 3 — LLM Provider + Base Agent
+- MODULE 4 — Core Role-Based AI Agents
+- MODULE 5 — Debate Creation + Agent Selection
+- MODULE 6 — Debate Orchestration + Multi-Agent Debate Engine
+- MODULE 7 — Live Debate Streaming + WebSockets
+
+CURRENT STACK:
+Backend:
+- FastAPI
+- Python
+- async SQLAlchemy
+- Alembic
+- PostgreSQL
+- Redis
+- JWT authentication
+- Groq through an LLM provider abstraction
+
+Frontend:
+- React
+- Vite
+- TypeScript
+- TailwindCSS
+
+Infrastructure:
+- PostgreSQL + Redis run through Docker Compose
+- FastAPI backend is currently run manually on Windows
+- Frontend is run manually
+
+IMPORTANT:
+Inspect the existing project before making any changes.
+
+Do NOT assume file names, folder structure, models, or endpoint names.
+Reuse the architecture that already exists.
+
+==================================================
+MODULE 8 — EVIDENCE RETRIEVAL + CLAIM EXTRACTION
+==================================================
+
+GOAL:
+
+Add a structured analysis layer that can:
+
+1. Extract factual claims from completed debate messages.
+2. Store extracted claims in PostgreSQL.
+3. Retrieve external evidence/search results for selected claims.
+4. Store retrieved evidence in PostgreSQL.
+5. Display claims and evidence in the frontend.
+
+This module is ONLY about:
+
+CLAIM EXTRACTION
++
+EVIDENCE RETRIEVAL
+
+Do NOT implement fact verification yet.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+IMPLEMENT ONLY MODULE 8.
+
+DO NOT implement:
+
+- fact checking / true-false verdicts
+- claim verification
+- confidence scores for truth
+- fallacy detection
+- debate judging
+- agent scoring
+- winner selection
+- reputation scores
+- voting
+- final debate ranking
+- advanced analytics
+- sentiment analysis
+- plagiarism detection
+- citation quality scoring
+- autonomous research agents
+- background worker architecture
+- Celery
+- Kafka
+- RabbitMQ
+- Redis Pub/Sub
+- vector database
+- RAG pipeline
+- embeddings
+- semantic search database
+- web scraping
+- browser automation
+- automatic source credibility ranking
+
+Do not redesign the existing debate engine.
+
+Do not replace Groq.
+
+Do not replace the existing LLM provider abstraction.
+
+Do not modify authentication unless absolutely required.
+
+Do not modify the existing WebSocket architecture unless required for a very small compatibility change.
+
+==================================================
+STEP 1 — INSPECT EXISTING ARCHITECTURE
+==================================================
+
+Before coding, inspect:
+
+- backend folder structure
+- existing SQLAlchemy models
+- Alembic migrations
+- Debate model
+- DebateMessage model
+- Agent model
+- user ownership logic
+- existing LLM provider abstraction
+- BaseAgent
+- existing API routers
+- existing debate services
+- DebateEngine
+- WebSocket implementation
+- frontend routing
+- frontend API client
+- existing debate detail/transcript UI
+- environment configuration
+- .env.example
+
+Understand how Module 6 stores:
+
+- debate rounds
+- debate messages
+- agent IDs
+- message IDs
+- message content
+- timestamps
+- debate status
+
+Reuse those existing models and relationships.
+
+Do not duplicate existing concepts.
+
+==================================================
+STEP 2 — DATABASE MODELS
+==================================================
+
+Add database support for claims and evidence.
+
+Use async SQLAlchemy and follow the project's existing model conventions.
+
+Create a Claim model.
+
+Minimum fields:
+
+- id
+- debate_id
+- message_id
+- agent_id
+- text
+- claim_type
+- created_at
+
+Relationships should allow:
+
+Claim
+→ Debate
+→ DebateMessage
+→ Agent
+
+Claim types should remain simple.
+
+Suggested values:
+
+- factual
+- opinion
+- prediction
+- definition
+- other
+
+IMPORTANT:
+
+The extraction system should identify factual claims, but it must not decide whether a claim is true or false.
+
+Create an Evidence model.
+
+Minimum fields:
+
+- id
+- claim_id
+- title
+- url
+- snippet
+- source_name/domain
+- retrieved_at
+
+Optional useful fields may be added if they fit the existing architecture.
+
+For example:
+
+- published_at
+- relevance_score
+
+But do not create a complicated evidence-ranking system.
+
+Evidence records must represent actual search results returned by the configured evidence provider.
+
+Do NOT fabricate evidence.
+
+==================================================
+STEP 3 — ALEMBIC MIGRATION
+==================================================
+
+Create an Alembic migration for the new tables.
+
+Ensure:
+
+- foreign keys are correct
+- indexes exist where useful
+- cascade behavior follows the project's existing conventions
+- migration upgrades successfully
+- migration downgrade works
+
+Do not modify existing tables unnecessarily.
+
+Run the migration against the existing development database.
+
+==================================================
+STEP 4 — EVIDENCE PROVIDER ABSTRACTION
+==================================================
+
+Create an evidence/search provider abstraction.
+
+Example conceptual interface:
+
+EvidenceProvider
+    search(query, max_results)
+
+The interface should return normalized search results.
+
+Example normalized structure:
+
+{
+    "title": "...",
+    "url": "...",
+    "snippet": "...",
+    "source_name": "..."
+}
+
+The rest of the application must NOT depend directly on the Tavily response format.
+
+==================================================
+STEP 5 — TAVILY PROVIDER
+==================================================
+
+Implement Tavily as the first evidence provider.
+
+Use the existing environment configuration if already present.
+
+Expected configuration:
+
+EVIDENCE_PROVIDER=tavily
+TAVILY_API_KEY=
+
+If these variables already exist, reuse them.
+
+If they do not exist, add them to .env.example.
+
+IMPORTANT:
+
+Never put the real API key in:
+
+- frontend code
+- source code
+- Git
+- README
+- test files
+
+The real key must remain server-side in backend/.env.
+
+Do not ask me to provide or paste the API key.
+
+==================================================
+STEP 6 — PROVIDER FACTORY
+==================================================
+
+Create a small evidence provider factory similar to the existing LLM provider architecture.
+
+Conceptually:
+
+EvidenceProviderFactory
+    ↓
+TavilyEvidenceProvider
+
+The architecture should allow another provider such as SerpAPI to be added later without changing the claim/evidence service.
+
+Do NOT implement SerpAPI now.
+
+If SERPAPI_API_KEY already exists in .env.example, leave it untouched for future use.
+
+==================================================
+STEP 7 — CLAIM EXTRACTION SERVICE
+==================================================
+
+Create a dedicated claim extraction service.
+
+The service should accept debate messages and identify claims.
+
+It should use the EXISTING LLM provider abstraction.
+
+Do NOT create a direct Groq SDK call.
+
+Do NOT create another LLM client.
+
+Do NOT use one of the six debate agents for claim extraction.
+
+This is a utility analysis service.
+
+Use a strict structured output format.
+
+For example:
+
+[
+  {
+    "message_id": "...",
+    "claim": "...",
+    "claim_type": "factual"
+  }
+]
+
+The exact schema may be adapted to the existing project.
+
+The extractor should:
+
+- analyze existing debate messages
+- identify meaningful claims
+- associate every claim with its original message
+- associate the claim with the agent who made it
+- classify the claim type
+- avoid duplicate claims where possible
+- preserve the original meaning
+- avoid inventing claims
+
+IMPORTANT:
+
+A claim is something that can be examined against evidence.
+
+Do not convert every sentence into a claim.
+
+Examples:
+
+"Global temperatures have increased over the last century."
+
+→ factual claim
+
+"I believe this policy is unfair."
+
+→ opinion
+
+"This technology will dominate the market."
+
+→ prediction
+
+Do not assign truth values.
+
+==================================================
+STEP 8 — ROBUST LLM OUTPUT PARSING
+==================================================
+
+LLM responses may contain invalid JSON.
+
+Implement safe parsing/validation.
+
+Use Pydantic models for structured claim output.
+
+The service should handle:
+
+- valid JSON
+- JSON inside markdown code fences
+- malformed output
+- missing fields
+- invalid claim types
+- empty claim lists
+
+Do not silently create corrupted database records.
+
+If extraction fails, return a clear application error.
+
+==================================================
+STEP 9 — CLAIM EXTRACTION API
+==================================================
+
+Add an authenticated endpoint to extract claims from a debate.
+
+Use the project's existing API conventions.
+
+Suggested endpoint:
+
+POST
+
+/api/v1/debates/{debate_id}/claims/extract
+
+Requirements:
+
+- user must be authenticated
+- user must own the debate
+- debate must exist
+- debate should have completed messages
+- extraction should not run on an empty debate
+
+The endpoint should:
+
+1. Load the debate.
+2. Load its persisted messages.
+3. Run claim extraction.
+4. Validate extracted claims.
+5. Persist claims.
+6. Return the extracted claims.
+
+Prevent accidental duplication.
+
+If extraction is requested twice, do not blindly duplicate the same claims.
+
+Use an appropriate strategy based on the existing database architecture.
+
+==================================================
+STEP 10 — CLAIM LIST API
+==================================================
+
+Add:
+
+GET
+
+/api/v1/debates/{debate_id}/claims
+
+Requirements:
+
+- authenticated
+- ownership checked
+- return claims for the debate
+- deterministic ordering
+- include useful metadata
+
+Example response:
+
+{
+    "debate_id": "...",
+    "claims": [
+        {
+            "id": "...",
+            "message_id": "...",
+            "agent_id": "...",
+            "text": "...",
+            "claim_type": "factual",
+            "created_at": "..."
+        }
+    ]
+}
+
+Use the project's existing response conventions.
+
+==================================================
+STEP 11 — EVIDENCE RETRIEVAL SERVICE
+==================================================
+
+Create a dedicated EvidenceRetrievalService.
+
+Input:
+
+claim
+
+Output:
+
+normalized evidence results.
+
+The service should:
+
+1. Receive a claim.
+2. Create an appropriate search query.
+3. Call the configured EvidenceProvider.
+4. Normalize returned results.
+5. Persist the results.
+6. Return the persisted evidence.
+
+IMPORTANT:
+
+The system must NOT state that the evidence proves or disproves the claim.
+
+Use neutral terminology such as:
+
+- evidence
+- search result
+- source
+- retrieved information
+
+Do NOT use:
+
+- verified
+- true
+- false
+- proven
+- debunked
+
+Those belong to a future fact-verification module.
+
+==================================================
+STEP 12 — EVIDENCE RETRIEVAL API
+==================================================
+
+Add an authenticated endpoint for retrieving evidence for a claim.
+
+Suggested:
+
+POST
+
+/api/v1/claims/{claim_id}/evidence/retrieve
+
+Requirements:
+
+- authenticate user
+- verify claim exists
+- verify the claim belongs to a debate owned by the current user
+- call EvidenceProvider
+- persist results
+- return results
+
+Add reasonable limits.
+
+For example:
+
+- maximum 5 search results per claim
+- maximum query length
+- prevent empty queries
+
+Avoid unnecessary API calls.
+
+==================================================
+STEP 13 — GET EVIDENCE API
+==================================================
+
+Add:
+
+GET
+
+/api/v1/claims/{claim_id}/evidence
+
+Requirements:
+
+- authenticated
+- ownership checked through the claim's debate
+- deterministic ordering
+- return stored evidence
+- do NOT call Tavily automatically
+
+The GET endpoint must read from the database only.
+
+==================================================
+STEP 14 — API ERROR HANDLING
+==================================================
+
+Handle:
+
+- debate not found
+- claim not found
+- unauthorized user
+- debate with no messages
+- empty claim
+- evidence provider unavailable
+- missing Tavily API key
+- Tavily API error
+- timeout
+- malformed provider response
+- LLM extraction failure
+
+Return proper HTTP status codes using the project's existing error-handling conventions.
+
+Do not expose:
+
+- API keys
+- internal stack traces
+- raw provider secrets
+- sensitive environment variables
+
+==================================================
+STEP 15 — FRONTEND CLAIMS UI
+==================================================
+
+Add a minimal UI to the existing debate detail page.
+
+Do NOT redesign the entire frontend.
+
+After the debate transcript, add:
+
+CLAIMS
+
+Each claim should show:
+
+- agent name
+- claim text
+- claim type
+
+Example:
+
+Agent: Scientist
+
+Claim:
+"...."
+
+Type:
+Factual
+
+Add a button:
+
+"Extract Claims"
+
+The button should call:
+
+POST /api/v1/debates/{debate_id}/claims/extract
+
+After successful extraction, refresh the claims list.
+
+==================================================
+STEP 16 — FRONTEND EVIDENCE UI
+==================================================
+
+For each claim, provide:
+
+"Retrieve Evidence"
+
+button.
+
+When clicked:
+
+POST /api/v1/claims/{claim_id}/evidence/retrieve
+
+Then display the stored evidence.
+
+Each evidence item should show:
+
+- title
+- source/domain
+- snippet
+- URL
+
+URLs should open safely in a new tab.
+
+Do not display evidence as if it proves the claim.
+
+Use wording such as:
+
+"Retrieved sources"
+
+rather than:
+
+"Verified sources"
+
+==================================================
+STEP 17 — LOADING AND ERROR STATES
+==================================================
+
+Frontend must handle:
+
+- extraction loading
+- evidence retrieval loading
+- API errors
+- no claims
+- no evidence
+- missing evidence provider
+- authentication expiration
+
+Do not crash the debate transcript if claim/evidence analysis fails.
+
+The existing live debate functionality must continue working independently.
+
+==================================================
+STEP 18 — WEBSOCKET INTEGRATION
+==================================================
+
+Do NOT add claim extraction to the live debate WebSocket flow yet.
+
+Do NOT run evidence searches automatically during agent turns.
+
+Module 8 analysis should be explicitly triggered through HTTP.
+
+This keeps:
+
+Debate execution
+and
+Post-debate analysis
+
+separate.
+
+Do not modify the existing WebSocket event contract unless absolutely necessary.
+
+==================================================
+STEP 19 — TESTS
+==================================================
+
+Add backend tests for:
+
+1. Claim model creation.
+2. Evidence model creation.
+3. Claim extraction with mocked LLM response.
+4. Invalid LLM JSON handling.
+5. Claim type validation.
+6. Duplicate extraction protection.
+7. Claim ownership authorization.
+8. Claim list endpoint.
+9. Evidence provider abstraction.
+10. Tavily provider with mocked HTTP response.
+11. Evidence persistence.
+12. Evidence retrieval endpoint.
+13. Evidence ownership authorization.
+14. Missing Tavily API key.
+15. Provider failure.
+16. Empty search result.
+17. Existing authentication behavior.
+18. Existing debate behavior.
+
+Do NOT make automated tests depend on the real Tavily API.
+
+Mock external API calls.
+
+Do NOT make automated tests depend on the real Groq API.
+
+Mock the LLM provider.
+
+==================================================
+STEP 20 — REAL MANUAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Start PostgreSQL and Redis.
+2. Run Alembic migrations.
+3. Start FastAPI.
+4. Start React frontend.
+5. Login with an existing user.
+6. Use an existing completed debate with at least two agents.
+7. Open the debate detail page.
+8. Click "Extract Claims".
+9. Verify claims appear.
+10. Select a factual claim.
+11. Click "Retrieve Evidence".
+12. Verify Tavily returns real search results.
+13. Verify evidence is stored in PostgreSQL.
+14. Refresh the page.
+15. Verify claims remain.
+16. Verify evidence remains.
+17. Verify evidence is NOT labeled as true/false/verified.
+18. Verify existing debate transcript still works.
+19. Verify WebSocket live debate functionality still works.
+20. Verify another user's debate cannot be accessed.
+
+If Tavily credentials are unavailable, do not fake the real verification.
+Instead verify the complete flow using mocks and clearly report that live provider verification could not be performed.
+
+==================================================
+STEP 21 — SECURITY CHECK
+==================================================
+
+Confirm:
+
+- JWT authentication remains enforced.
+- Debate ownership is enforced.
+- Claim ownership is derived through its debate.
+- Evidence ownership is derived through its claim/debate.
+- Tavily API key is server-side only.
+- No secrets are returned by APIs.
+- External URLs are treated as untrusted data.
+- No arbitrary internal URLs are fetched by the backend.
+- Search result content is not executed as code.
+
+==================================================
+STEP 22 — DOCUMENTATION
+==================================================
+
+Update README with:
+
+MODULE 8 — Evidence Retrieval + Claim Extraction
+
+Document:
+
+- purpose
+- claim extraction flow
+- evidence retrieval flow
+- database entities
+- API endpoints
+- environment variables
+- Tavily setup
+- how to test
+- important limitation:
+
+"Evidence retrieval does not determine whether a claim is true or false."
+
+Also update .env.example if required.
+
+DO NOT modify the real backend/.env secret values.
+
+==================================================
+STEP 23 — REGRESSION CHECK
+==================================================
+
+Run all existing tests.
+
+The following functionality must remain working:
+
+- registration
+- login
+- JWT authentication
+- /auth/me
+- agent testing
+- debate creation
+- agent selection
+- debate start
+- multi-agent orchestration
+- rounds
+- messages
+- transcript
+- WebSocket connection
+- live debate events
+- frontend routing
+
+Fix regressions caused by Module 8.
+
+Do not rewrite unrelated code.
+
+==================================================
+FINAL REPORT
+==================================================
+
+When finished, report:
+
+1. Files created
+2. Files modified
+3. Database models added
+4. Alembic migration created
+5. New backend services
+6. New API endpoints
+7. Evidence provider implementation
+8. Frontend changes
+9. Tests added
+10. Tests passed
+11. Real Tavily verification result
+12. Any known limitations
+
+IMPORTANT:
+
+Do NOT start Module 9.
+
+STOP after completing Module 8.
+
+The next planned module is:
+
+MODULE 9 — Fact Verification + Claim Evaluation
+
+Do not implement anything from Module 9 now.

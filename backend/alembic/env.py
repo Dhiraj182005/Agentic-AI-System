@@ -7,7 +7,7 @@ from alembic import context
 
 from app.core.config import get_settings
 from app.db.database import Base
-from app.models import User, Debate, Agent
+from app.models import User, Debate, Agent, DebateAgent, DebateRound, DebateMessage
 
 config = context.config
 settings = get_settings()

@@ -1,0 +1,888 @@
+We are continuing the AI Debate Arena project.
+
+COMPLETED MODULES:
+- MODULE 0 — Project Foundation
+- MODULE 1 — Database Layer
+- MODULE 2 — Authentication
+- MODULE 3 — LLM Provider + Base Agent
+- MODULE 4 — Core Role-Based AI Agents
+- MODULE 5 — Debate Creation + Agent Selection
+- MODULE 6 — Debate Orchestration + Multi-Agent Debate Engine
+- MODULE 7 — Live Debate Streaming + WebSockets
+- MODULE 8 — Evidence Retrieval + Claim Extraction
+- MODULE 9 — Fact Verification + Claim Evaluation
+
+MODULE 8 + MODULE 9 ARE WORKING:
+- Claims are extracted from debate messages.
+- Claims are classified.
+- Evidence can be retrieved.
+- Evidence is stored.
+- Claims can be evaluated.
+- Supported / Contradicted / Insufficient Evidence works.
+- Confidence and explanation are displayed.
+
+CURRENT STACK:
+
+Backend:
+- FastAPI
+- Python
+- async SQLAlchemy
+- Alembic
+- PostgreSQL
+- Redis
+- JWT authentication
+- Groq through the existing LLM provider abstraction
+
+Frontend:
+- React
+- Vite
+- TypeScript
+- TailwindCSS
+
+Infrastructure:
+- PostgreSQL + Redis through Docker Compose
+- FastAPI backend manually on Windows
+- React frontend manually
+
+IMPORTANT:
+Inspect the existing project before making changes.
+
+Do NOT assume file names, schemas, services, or endpoint names.
+Reuse the existing architecture.
+
+==================================================
+MODULE 10 — FALLACY DETECTION + DEBATE QUALITY ANALYSIS
+==================================================
+
+GOAL:
+
+Add an AI-powered analysis layer that detects logical/rhetorical fallacies in debate messages and evaluates the quality of individual arguments.
+
+The system should:
+
+1. Analyze persisted debate messages.
+2. Detect possible fallacies.
+3. Identify the fallacy type.
+4. Provide a concise explanation.
+5. Assign severity/confidence.
+6. Evaluate argument quality.
+7. Store the results.
+8. Display the results in the frontend.
+
+This module analyzes the QUALITY OF ARGUMENTS.
+
+It does NOT decide the overall winner of the debate.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+IMPLEMENT ONLY MODULE 10.
+
+DO NOT implement:
+
+- overall debate winner
+- judge system
+- agent ranking
+- leaderboard
+- reputation
+- voting
+- final debate score
+- advanced analytics dashboard
+- PDF reports
+- export system
+- autonomous debate continuation
+- new debate agents
+- new LLM provider
+- vector database
+- embeddings
+- RAG
+- background workers
+- Celery
+- Kafka
+- RabbitMQ
+- Redis Pub/Sub
+- web scraping
+- browser automation
+
+Do NOT redesign:
+
+- authentication
+- debate engine
+- WebSocket architecture
+- claim extraction
+- evidence retrieval
+- fact verification
+
+==================================================
+STEP 1 — INSPECT EXISTING ARCHITECTURE
+==================================================
+
+Before coding inspect:
+
+- Debate model
+- DebateMessage / DebateTurn model
+- Agent model
+- Claim model
+- Evidence model
+- ClaimVerification model
+- existing LLM provider abstraction
+- BaseAgent
+- debate engine
+- claim extraction service
+- evidence retrieval service
+- verification service
+- API routers
+- frontend debate detail page
+- claims UI
+- evidence UI
+- existing migrations
+- existing tests
+
+Reuse existing models and conventions.
+
+Do not create duplicate message/claim concepts.
+
+==================================================
+STEP 2 — FALLACY MODEL
+==================================================
+
+Create a Fallacy model.
+
+Minimum fields:
+
+- id
+- debate_id
+- message_id
+- agent_id
+- fallacy_type
+- severity
+- confidence
+- explanation
+- evidence_span
+- created_at
+
+Adapt names to the existing database conventions.
+
+Relationships:
+
+Fallacy
+→ Debate
+→ DebateMessage
+→ Agent
+
+The exact relationship names should follow the existing project.
+
+==================================================
+STEP 3 — FALLACY TYPES
+==================================================
+
+Use a controlled vocabulary.
+
+Start with a practical set:
+
+- ad_hominem
+- straw_man
+- false_dilemma
+- slippery_slope
+- appeal_to_authority
+- appeal_to_emotion
+- hasty_generalization
+- circular_reasoning
+- red_herring
+- false_cause
+- bandwagon
+- loaded_question
+- no_fallacy
+
+You may add a small number of commonly recognized fallacies if the existing architecture benefits from them.
+
+Do NOT create dozens of obscure categories.
+
+The model should prefer:
+
+no_fallacy
+
+when evidence for a fallacy is weak.
+
+==================================================
+STEP 4 — FALLACY SEVERITY
+==================================================
+
+Use:
+
+- low
+- medium
+- high
+
+Severity describes the impact of the detected fallacy on the argument.
+
+It does NOT mean the argument is false.
+
+Example:
+
+An argument can contain a low-severity rhetorical issue while still containing a valid factual claim.
+
+==================================================
+STEP 5 — FALLACY DETECTION SERVICE
+==================================================
+
+Create:
+
+FallacyDetectionService
+
+It should:
+
+1. Load a debate message.
+2. Optionally load limited relevant conversation context.
+3. Analyze the argument using the existing LLM provider.
+4. Identify whether a fallacy exists.
+5. Identify the fallacy type.
+6. Assign severity.
+7. Assign confidence.
+8. Provide a concise explanation.
+9. Identify the relevant text span.
+10. Persist the result only when a real fallacy is detected.
+
+IMPORTANT:
+
+Do NOT directly call Groq.
+
+Use the existing LLM provider abstraction.
+
+==================================================
+STEP 6 — FALLACY PROMPT
+==================================================
+
+Create a strict analysis prompt.
+
+The model must:
+
+- analyze the argument objectively
+- distinguish rhetorical disagreement from logical fallacy
+- not label disagreement as a fallacy
+- not assume an argument is fallacious simply because it is controversial
+- identify the exact reasoning pattern
+- provide concise reasoning
+- avoid political or ideological bias
+- avoid judging the speaker
+- avoid judging whether the claim itself is factually true
+- use only the supplied text/context
+
+The model should return structured JSON.
+
+Example:
+
+{
+  "fallacy_type": "straw_man",
+  "severity": "medium",
+  "confidence": 0.87,
+  "explanation": "The response reframes the opposing position into a stronger claim that was not actually made.",
+  "evidence_span": "..."
+}
+
+If no fallacy is detected:
+
+{
+  "fallacy_type": "no_fallacy",
+  "severity": "low",
+  "confidence": 0.91,
+  "explanation": "The argument does not show a clear recognizable logical fallacy.",
+  "evidence_span": null
+}
+
+==================================================
+STEP 7 — STRUCTURED OUTPUT VALIDATION
+==================================================
+
+Use Pydantic validation.
+
+Validate:
+
+- fallacy_type
+- severity
+- confidence
+- explanation
+- evidence_span
+
+Rules:
+
+confidence must be between 0 and 1.
+
+Reject:
+
+- invalid fallacy types
+- invalid severity
+- missing explanation
+- invalid confidence
+- malformed JSON
+
+Handle:
+
+- normal JSON
+- markdown code fences
+- malformed JSON
+
+Do not persist invalid results.
+
+==================================================
+STEP 8 — DO NOT OVER-DETECT FALLACIES
+==================================================
+
+This is extremely important.
+
+The system should prefer:
+
+"No fallacy detected"
+
+over falsely labeling an argument.
+
+Examples:
+
+Disagreement ≠ ad hominem
+
+Strong claim ≠ straw man
+
+Prediction ≠ slippery slope
+
+Emotional language ≠ appeal to emotion automatically
+
+Mentioning an expert ≠ appeal to authority automatically
+
+Correlation ≠ automatically false cause
+
+The detection explanation must justify why the pattern qualifies as a fallacy.
+
+==================================================
+STEP 9 — FALLACY API
+==================================================
+
+Add an authenticated endpoint.
+
+Suggested:
+
+POST
+
+/api/v1/debates/{debate_id}/fallacies/analyze
+
+Requirements:
+
+- JWT authentication
+- verify debate ownership
+- load persisted debate messages
+- analyze messages
+- persist detected fallacies
+- return results
+
+Do not analyze messages that do not exist.
+
+Do not analyze another user's debate.
+
+==================================================
+STEP 10 — MESSAGE-LEVEL FALLACY API
+==================================================
+
+Add an endpoint to analyze a specific message.
+
+Suggested:
+
+POST
+
+/api/v1/messages/{message_id}/fallacies/analyze
+
+Requirements:
+
+- authenticate
+- verify message ownership through debate
+- analyze only that message
+- persist detected fallacy if applicable
+- return result
+
+This endpoint is useful for testing individual messages.
+
+==================================================
+STEP 11 — GET FALLACIES
+==================================================
+
+Add:
+
+GET
+
+/api/v1/debates/{debate_id}/fallacies
+
+Requirements:
+
+- authenticated
+- ownership checked
+- database read only
+- deterministic ordering
+
+Return:
+
+- message
+- agent
+- fallacy type
+- severity
+- confidence
+- explanation
+- evidence span
+
+Do NOT call the LLM on GET.
+
+==================================================
+STEP 12 — DUPLICATE PROTECTION
+==================================================
+
+Prevent uncontrolled duplicate fallacies when analysis is run repeatedly.
+
+Use a clean strategy.
+
+For example:
+
+One analysis result per:
+
+debate message + fallacy type
+
+OR replace/recalculate existing results for the message.
+
+Choose the approach that fits the existing architecture.
+
+Do not create hundreds of duplicate records from repeated button clicks.
+
+==================================================
+STEP 13 — ARGUMENT QUALITY MODEL
+==================================================
+
+Add an ArgumentEvaluation model.
+
+Minimum fields:
+
+- id
+- debate_id
+- message_id
+- agent_id
+- logical_soundness
+- evidence_score
+- relevance_score
+- effectiveness_score
+- overall_score
+- explanation
+- created_at
+
+Use a reasonable scoring scale:
+
+0–10
+
+All scores must be numeric.
+
+==================================================
+STEP 14 — ARGUMENT QUALITY EVALUATION
+==================================================
+
+Create:
+
+ArgumentEvaluationService
+
+It should evaluate an individual debate message using:
+
+- logical reasoning
+- evidence usage
+- relevance to topic
+- effectiveness of argument
+
+IMPORTANT:
+
+Do NOT interpret the score as truth.
+
+For example:
+
+A score of 9 does NOT mean the argument is factually true.
+
+It means the argument is strong according to the defined quality dimensions.
+
+==================================================
+STEP 15 — EVALUATION PROMPT
+==================================================
+
+Use the existing LLM provider.
+
+The prompt should require structured JSON:
+
+{
+  "logical_soundness": 8,
+  "evidence_score": 7,
+  "relevance_score": 9,
+  "effectiveness_score": 8,
+  "overall_score": 8.0,
+  "explanation": "..."
+}
+
+Scoring rules:
+
+0–2 = very weak
+3–4 = weak
+5–6 = moderate
+7–8 = strong
+9–10 = excellent
+
+The explanation must be concise.
+
+Do not expose chain-of-thought.
+
+Only store a short justification.
+
+==================================================
+STEP 16 — EVIDENCE-AWARE EVALUATION
+==================================================
+
+When evaluating an argument:
+
+If the message contains claims that already have:
+
+- retrieved evidence
+- verification results
+
+the evaluator may use that information as supporting context.
+
+However:
+
+Do NOT replace the existing verification result.
+
+Do NOT independently invent factual verification.
+
+The evaluation should distinguish:
+
+argument quality
+
+from
+
+claim truth.
+
+==================================================
+STEP 17 — ARGUMENT EVALUATION API
+==================================================
+
+Add:
+
+POST
+
+/api/v1/messages/{message_id}/evaluation
+
+Requirements:
+
+- authenticate
+- verify ownership through debate
+- evaluate the message
+- persist result
+- return result
+
+Add:
+
+GET
+
+/api/v1/debates/{debate_id}/evaluations
+
+Requirements:
+
+- authenticate
+- ownership check
+- return stored evaluations
+- deterministic ordering
+- no LLM call on GET
+
+==================================================
+STEP 18 — FRONTEND FALLACY UI
+==================================================
+
+Update the existing debate detail/transcript page.
+
+Do NOT redesign the page.
+
+For each message provide an option:
+
+"Analyze Argument"
+
+The result should display:
+
+Fallacies:
+- Fallacy Type
+- Severity
+- Confidence
+- Explanation
+
+If no fallacy:
+
+"No clear fallacy detected."
+
+Do not show "No fallacy" as an error.
+
+==================================================
+STEP 19 — FRONTEND QUALITY UI
+==================================================
+
+For each message provide:
+
+"Evaluate Argument"
+
+Display:
+
+Logical Soundness: X/10
+Evidence: X/10
+Relevance: X/10
+Effectiveness: X/10
+Overall: X/10
+
+Then show a short explanation.
+
+Add a disclaimer:
+
+"Argument quality scores measure reasoning and presentation quality; they do not determine absolute truth."
+
+==================================================
+STEP 20 — LOADING + ERROR STATES
+==================================================
+
+Frontend must handle:
+
+- analyzing
+- evaluating
+- API failure
+- no fallacy
+- authentication expiration
+- missing message
+- backend failure
+
+Do not break the transcript if analysis fails.
+
+==================================================
+STEP 21 — WEBSOCKET INTEGRATION
+==================================================
+
+Do NOT automatically run fallacy detection during live debate execution.
+
+Do NOT slow down DebateEngine.
+
+Do NOT modify existing WebSocket event ordering.
+
+Fallacy analysis and argument evaluation should initially be explicit HTTP operations.
+
+If the existing WebSocket architecture can safely support future events, leave it extensible but do not implement automatic live analysis now.
+
+==================================================
+STEP 22 — DATABASE MIGRATION
+==================================================
+
+Create Alembic migration for:
+
+- fallacies
+- argument evaluations
+
+Ensure:
+
+- foreign keys
+- indexes
+- uniqueness/duplicate protection where appropriate
+- timestamps
+- correct cascade behavior
+
+Run upgrade and verify downgrade.
+
+==================================================
+STEP 23 — TESTS
+==================================================
+
+Add backend tests for fallacy detection:
+
+1. Valid fallacy detection.
+2. No fallacy detection.
+3. Each major fallacy type.
+4. Confidence validation.
+5. Severity validation.
+6. Invalid JSON.
+7. Invalid fallacy type.
+8. Duplicate protection.
+9. Debate ownership.
+10. Message ownership.
+11. GET fallacies.
+12. POST fallacy analysis.
+
+Add argument evaluation tests:
+
+13. Valid evaluation.
+14. Score range validation.
+15. Invalid score.
+16. Missing message.
+17. Ownership authorization.
+18. GET evaluations.
+19. POST evaluation.
+
+Integration/regression:
+
+20. Existing authentication.
+21. Existing debate creation.
+22. Existing debate execution.
+23. Existing WebSocket.
+24. Claim extraction.
+25. Evidence retrieval.
+26. Claim verification.
+
+Mock the LLM provider.
+
+Do NOT use real Groq calls in automated tests.
+
+==================================================
+STEP 24 — REAL MANUAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Start PostgreSQL and Redis.
+2. Run Alembic migrations.
+3. Start FastAPI.
+4. Start React.
+5. Login.
+6. Open a completed debate.
+7. Select an argument/message.
+8. Click "Analyze Argument".
+9. Verify fallacy analysis appears.
+10. Test an argument with no obvious fallacy.
+11. Verify "No clear fallacy detected."
+12. Click "Evaluate Argument".
+13. Verify all four scores.
+14. Verify overall score.
+15. Refresh the page.
+16. Verify results persist.
+17. Run analysis again.
+18. Verify duplicate records are not created.
+19. Verify another user cannot analyze another user's debate.
+20. Verify existing claims/evidence/verification still work.
+21. Verify live WebSocket debate still works.
+
+If real LLM behavior does not reliably produce every fallacy category, do not fake it.
+Use mocked automated tests for deterministic category coverage.
+
+==================================================
+STEP 25 — IMPORTANT QUALITY RULE
+==================================================
+
+The system must never treat:
+
+fallacy detected
+
+as:
+
+claim is false.
+
+And must never treat:
+
+high argument score
+
+as:
+
+claim is true.
+
+Keep these concepts separate:
+
+Claim truth evaluation
+        ↓
+Module 9
+
+Argument fallacy detection
+        ↓
+Module 10
+
+Argument quality scoring
+        ↓
+Module 10
+
+Overall debate judging
+        ↓
+Future Module 11
+
+==================================================
+STEP 26 — README
+==================================================
+
+Update README with:
+
+MODULE 10 — Fallacy Detection + Debate Quality Analysis
+
+Document:
+
+- fallacy detection
+- supported fallacy types
+- severity/confidence
+- argument evaluation
+- scoring dimensions
+- API endpoints
+- database models
+- testing
+- limitations
+
+Clearly state:
+
+"Fallacy detection does not determine whether a claim is true or false."
+
+And:
+
+"Argument quality scores measure reasoning quality and do not represent absolute truth."
+
+==================================================
+STEP 27 — REGRESSION CHECK
+==================================================
+
+Run all existing tests.
+
+Ensure these remain working:
+
+- registration
+- login
+- /auth/me
+- JWT
+- agent testing
+- debate creation
+- agent selection
+- debate start
+- rounds
+- messages
+- transcript
+- WebSockets
+- claim extraction
+- evidence retrieval
+- claim verification
+- frontend routing
+
+Fix only regressions caused by Module 10.
+
+Do not rewrite unrelated code.
+
+==================================================
+FINAL REPORT
+==================================================
+
+When finished, report:
+
+1. Files created
+2. Files modified
+3. Database models added
+4. Alembic migration
+5. Fallacy detection service
+6. Argument evaluation service
+7. API endpoints
+8. Frontend changes
+9. Tests added
+10. Tests passed
+11. Manual verification performed
+12. Known limitations
+
+IMPORTANT:
+
+STOP after completing MODULE 10.
+
+Do NOT start Module 11.
+
+The next planned module is:
+
+MODULE 11 — Debate Judge + Overall Scoring System
+
+Do not implement anything from Module 11 now.

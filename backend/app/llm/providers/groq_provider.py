@@ -38,7 +38,12 @@ class GroqProvider(BaseLLMProvider):
         if not self.model_name:
             raise LLMConfigurationError("GROQ_MODEL is not configured.")
 
-        self._client = AsyncGroq(api_key=self.api_key, timeout=self.timeout)
+        # Retry transient failures (including 429 rate limits) with the
+        # SDK's exponential backoff, so a short-lived token bucket refill
+        # does not fail a whole request immediately.
+        self._client = AsyncGroq(
+            api_key=self.api_key, timeout=self.timeout, max_retries=4
+        )
 
     async def generate(
         self,
@@ -62,15 +67,39 @@ class GroqProvider(BaseLLMProvider):
             logger.warning("Groq request timed out after %ss", self.timeout)
             raise LLMTimeoutError("The LLM request timed out.") from exc
         except (APIConnectionError, APIError) as exc:
-            logger.warning("Groq API request failed: %s", type(exc).__name__)
+            # Log the original exception message (status codes, rate-limit
+            # details, payload errors) so the terminal shows the root cause.
+            logger.warning(
+                "Groq API request failed: %s: %s",
+                type(exc).__name__,
+                str(exc)[:300],
+            )
             raise LLMProviderAPIError("The LLM provider request failed.") from exc
 
         try:
-            content = completion.choices[0].message.content
+            choice = completion.choices[0]
+            content = choice.message.content
         except (AttributeError, IndexError) as exc:
+            logger.error(
+                "Groq returned an unreadable response: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
             raise LLMProviderError("The LLM provider returned an unreadable response.") from exc
 
         if not content:
+            usage = getattr(completion, "usage", None)
+            details = getattr(usage, "completion_tokens_details", None)
+            logger.error(
+                "Groq returned empty content (finish_reason=%s, "
+                "completion_tokens=%s, reasoning_tokens=%s, max_tokens=%s): "
+                "reasoning tokens count against max_tokens and can exhaust "
+                "the budget before any content is produced",
+                getattr(choice, "finish_reason", None),
+                getattr(usage, "completion_tokens", None) if usage else None,
+                getattr(details, "reasoning_tokens", None) if details else None,
+                max_tokens,
+            )
             raise LLMProviderError("The LLM provider returned an empty response.")
 
         return LLMResponse(

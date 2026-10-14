@@ -1,0 +1,72 @@
+We have completed Modules 0–6 and are currently working on the AI Debate Arena project.
+
+I am seeing this frontend console error:
+
+GET http://localhost:8000/api/v1/auth/me 401 (Unauthorized)
+
+The React frontend is running on localhost:5173 and FastAPI backend on localhost:8000.
+
+Important:
+- Authentication was already implemented and manually verified in Module 2.
+- Do NOT redesign or rewrite the authentication system.
+- Do NOT change JWT generation, password hashing, database models, or backend auth behavior unless inspection proves it is necessary.
+- Preserve all currently working functionality.
+
+TASK:
+Diagnose and fix the frontend authentication/token handling causing /api/v1/auth/me to return 401.
+
+First inspect the existing frontend authentication implementation, including:
+1. Login/register flow
+2. Where the JWT/access token is stored
+3. API client/interceptor implementation
+4. Auth context/store/hook
+5. Protected route logic
+6. The request to GET /api/v1/auth/me
+7. Logout behavior
+8. Any changes introduced in recent modules
+
+Verify whether:
+- The token is actually stored after login
+- The correct localStorage/sessionStorage key is used everywhere
+- The token is retrieved before calling /auth/me
+- The Authorization header is sent as:
+  Authorization: Bearer <token>
+- The API client uses the correct backend URL
+- A stale/invalid token is causing the request
+- /auth/me is being called before authentication is initialized
+- logout is accidentally clearing the token while the app still calls /auth/me
+
+Implement the smallest clean fix.
+
+IMPORTANT:
+- Do not hardcode a JWT.
+- Do not bypass authentication.
+- Do not make /auth/me public.
+- Do not remove the auth check just to eliminate the 401.
+- Do not expose secrets.
+- Do not modify backend authentication unless absolutely required.
+
+After fixing:
+1. Run frontend tests/build/type checks if available.
+2. Verify login stores the token.
+3. Verify /api/v1/auth/me receives the Bearer token.
+4. Verify a logged-in user can load the protected application without a 401.
+5. Verify logout still removes authentication correctly.
+6. Verify an unauthenticated request is still rejected by the backend.
+
+Also check the browser Network tab and report:
+- Request URL
+- Request method
+- Whether Authorization header is present
+- Response status
+
+The React Router v7 future-flag warnings and favicon.ico 404 are NOT part of this fix. Do not spend time fixing them unless they directly affect authentication.
+
+At the end, give me:
+- Root cause
+- Files changed
+- Exact fix
+- Tests/checks performed
+- Whether /auth/me now returns 200 when logged in
+
+STOP after fixing this authentication issue. Do not start the next module.

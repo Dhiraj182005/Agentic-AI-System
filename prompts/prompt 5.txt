@@ -1,0 +1,1157 @@
+We have completed and verified:
+
+✓ MODULE 0 — Project Foundation
+✓ MODULE 1 — Database Layer
+✓ MODULE 2 — Authentication
+✓ MODULE 3 — LLM Provider + Base Agent
+✓ MODULE 4 — Core Role-Based AI Agents
+
+Current working architecture:
+
+USER
+ ↓
+React Frontend
+ ↓
+FastAPI
+ ↓
+Authentication
+ ↓
+Agent Factory
+ ↓
+Role-Based Agents
+ ↓
+BaseAgent
+ ↓
+GroqProvider
+ ↓
+Groq API
+
+Core agents implemented:
+
+- Economist
+- Lawyer
+- Doctor
+- Scientist
+- Ethicist
+- Analyst
+
+The real Groq API has been tested successfully.
+
+==================================================
+MODULE 5 — DEBATE CREATION + AGENT SELECTION
+==================================================
+
+IMPORTANT:
+
+This module establishes the DATA and API layer for creating debates and selecting participating agents.
+
+It does NOT execute the debate yet.
+
+Do NOT implement:
+
+- Debate rounds
+- Multi-agent conversation
+- Agent-to-agent messaging
+- LangGraph
+- Debate orchestration
+- WebSockets
+- Live transcript
+- Streaming
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Winner selection
+- Final report generation
+- Analytics
+- PDF reports
+- Custom agent creation
+
+Those belong to later modules.
+
+==================================================
+1. FIRST INSPECT THE CURRENT PROJECT
+==================================================
+
+Before modifying anything:
+
+1. Inspect the existing Debate SQLAlchemy model.
+2. Inspect the existing Agent model.
+3. Inspect User ↔ Debate relationships.
+4. Inspect Agent seed data.
+5. Inspect authentication dependency.
+6. Inspect the agent factory from Module 4.
+7. Inspect existing API routing.
+8. Inspect Pydantic schemas.
+9. Inspect Alembic configuration.
+10. Inspect frontend routing and authentication state.
+11. Verify Modules 0–4 still work.
+
+Do not rewrite working infrastructure.
+
+If the existing Debate model already contains fields required by this module, reuse them.
+
+Only make database changes that are genuinely required.
+
+==================================================
+2. MODULE GOAL
+==================================================
+
+Implement this flow:
+
+Authenticated User
+        ↓
+Create Debate
+        ↓
+Enter Topic
+        ↓
+Choose Agent Selection Mode
+        ↓
+Select Core Agents
+        ↓
+Validate Selection
+        ↓
+Create Debate Record
+        ↓
+Create Debate-Agent Relationships
+        ↓
+Return Debate Details
+
+The debate should be created in a state such as:
+
+draft
+
+or:
+
+created
+
+It must NOT start executing automatically.
+
+==================================================
+3. DEBATE DATA MODEL
+==================================================
+
+Inspect the current Debate model.
+
+It currently contains approximately:
+
+- id
+- user_id
+- topic
+- expert_selection_mode
+- domain_tags
+- status
+- mode
+- total_rounds
+- verify_evidence
+
+Reuse the existing fields where possible.
+
+Determine whether a many-to-many relationship between Debate and Agent is already present.
+
+If not, create a proper association table.
+
+Suggested conceptual structure:
+
+debate_agents
+
+- debate_id
+- agent_id
+- created_at
+
+Requirements:
+
+- debate_id → Debate foreign key
+- agent_id → Agent foreign key
+- prevent duplicate agent assignment to the same debate
+- appropriate indexes/constraints
+- cascading behavior should be considered carefully
+
+Do NOT duplicate agent data into the Debate table.
+
+Do NOT store:
+
+economist_agent_id
+lawyer_agent_id
+doctor_agent_id
+
+etc.
+
+Use a normalized relationship.
+
+==================================================
+4. AGENT SELECTION
+==================================================
+
+Support the six existing core agents:
+
+economist
+lawyer
+doctor
+scientist
+ethicist
+analyst
+
+The request should use stable identifiers.
+
+Example:
+
+{
+    "agent_ids": [
+        "economist",
+        "scientist",
+        "ethicist"
+    ]
+}
+
+However, adapt this to the existing database ID strategy.
+
+If database Agent IDs are UUIDs, do not replace them just to use role strings.
+
+The API may accept role identifiers and resolve them to database agents if that fits the existing architecture.
+
+Choose the cleanest approach consistent with the existing Agent model.
+
+==================================================
+5. AGENT SELECTION MODES
+==================================================
+
+The existing Debate model contains:
+
+expert_selection_mode
+
+Implement the minimum useful modes required for this module.
+
+Recommended:
+
+manual
+auto
+
+Meaning:
+
+manual:
+User explicitly selects participating core agents.
+
+auto:
+System selects a valid set of core agents according to a simple deterministic rule.
+
+IMPORTANT:
+
+Do NOT implement an intelligent agent-selection AI yet.
+
+No LLM should be used to choose agents.
+
+For AUTO mode, use a simple deterministic implementation, for example:
+
+- select all six active core agents
+
+or another simple rule appropriate to the existing schema.
+
+Document the rule.
+
+The purpose of this module is to establish the selection architecture.
+
+Intelligent agent selection can be implemented later if needed.
+
+==================================================
+6. DEBATE CREATION REQUEST
+==================================================
+
+Create a proper Pydantic request schema.
+
+Conceptual example:
+
+{
+    "topic": "Should governments regulate generative AI?",
+    "expert_selection_mode": "manual",
+    "agent_ids": [
+        "economist",
+        "lawyer",
+        "scientist",
+        "ethicist"
+    ],
+    "domain_tags": [
+        "technology",
+        "policy"
+    ],
+    "mode": "standard",
+    "total_rounds": 3,
+    "verify_evidence": false
+}
+
+Adapt the fields to the actual existing Debate model.
+
+Validation requirements:
+
+TOPIC:
+- required
+- trimmed
+- cannot be empty
+- reasonable maximum length
+
+AGENTS:
+- at least 2 agents for a debate
+- no duplicate agents
+- only active core agents
+- reject unknown agents
+
+ROUNDS:
+- reasonable minimum and maximum
+- do not allow absurd values
+
+DOMAIN TAGS:
+- optional
+- reasonable validation
+
+MODE:
+- validate against supported modes
+
+VERIFY_EVIDENCE:
+- boolean
+
+==================================================
+7. IMPORTANT: MINIMUM AGENT COUNT
+==================================================
+
+A debate requires at least TWO participating agents.
+
+Therefore:
+
+0 agents → reject
+1 agent → reject
+2+ valid agents → accept
+
+Do not enforce an unnecessarily large number of agents.
+
+The current six core agents are the available pool.
+
+==================================================
+8. DEBATE STATUS
+==================================================
+
+When a debate is created:
+
+DO NOT start the LLM.
+
+DO NOT call Groq.
+
+DO NOT invoke BaseAgent.
+
+DO NOT create debate rounds.
+
+Set an appropriate initial status, for example:
+
+created
+
+or:
+
+draft
+
+Use the existing status conventions if already defined.
+
+The debate should remain waiting for a later module.
+
+==================================================
+9. API ENDPOINTS
+==================================================
+
+Implement protected debate creation endpoints.
+
+At minimum:
+
+POST /api/v1/debates
+
+GET /api/v1/debates/{debate_id}
+
+GET /api/v1/debates
+
+Optionally:
+
+DELETE /api/v1/debates/{debate_id}
+
+only if it fits the existing architecture and does not create unnecessary complexity.
+
+==================================================
+10. POST /api/v1/debates
+==================================================
+
+Require authentication.
+
+Use:
+
+Depends(get_current_user)
+
+Request:
+
+{
+    "topic": "...",
+    "expert_selection_mode": "manual",
+    "agent_ids": [...],
+    "domain_tags": [...],
+    "mode": "standard",
+    "total_rounds": 3,
+    "verify_evidence": false
+}
+
+Behavior:
+
+1. Authenticate user.
+2. Validate request.
+3. Validate selected agents.
+4. Create Debate record.
+5. Create Debate-Agent association records.
+6. Commit transaction.
+7. Return safe debate information.
+
+Example response:
+
+{
+    "id": "...",
+    "topic": "...",
+    "expert_selection_mode": "manual",
+    "domain_tags": [...],
+    "status": "created",
+    "mode": "standard",
+    "total_rounds": 3,
+    "verify_evidence": false,
+    "agents": [
+        {
+            "id": "...",
+            "name": "Economist",
+            "role": "economist"
+        }
+    ],
+    "created_at": "..."
+}
+
+Do not return internal sensitive data.
+
+==================================================
+11. TRANSACTION SAFETY
+==================================================
+
+Debate creation and agent assignment should be handled safely.
+
+Do not create:
+
+Debate successfully
+but
+
+agent assignment partially failed
+
+without rollback.
+
+Use an appropriate SQLAlchemy transaction.
+
+If agent validation or association creation fails:
+
+- rollback
+- do not leave an incomplete debate
+
+==================================================
+12. USER OWNERSHIP
+==================================================
+
+A user may only access their own debates.
+
+For:
+
+GET /api/v1/debates
+
+return only the authenticated user's debates.
+
+For:
+
+GET /api/v1/debates/{debate_id}
+
+verify:
+
+debate.user_id == current_user.id
+
+Otherwise return an appropriate error.
+
+Do not allow one user to retrieve another user's debate.
+
+This is important because the application is multi-user.
+
+==================================================
+13. LIST DEBATES
+==================================================
+
+Implement:
+
+GET /api/v1/debates
+
+Require authentication.
+
+Return the authenticated user's debates.
+
+At minimum return:
+
+- id
+- topic
+- status
+- mode
+- total_rounds
+- created_at
+- participating agents
+
+Do not return unnecessary database internals.
+
+If pagination is simple to implement within the existing architecture, it may be added.
+
+Do not build an elaborate pagination framework.
+
+==================================================
+14. GET SINGLE DEBATE
+==================================================
+
+Implement:
+
+GET /api/v1/debates/{debate_id}
+
+Require authentication.
+
+Return:
+
+- debate information
+- participating agents
+- current status
+- configuration
+
+This endpoint must NOT execute anything.
+
+No Groq call.
+
+No agents.
+
+No debate processing.
+
+==================================================
+15. AGENT VALIDATION
+==================================================
+
+Only active core agents may be selected.
+
+Validate:
+
+- agent exists
+- agent is active
+- agent is core
+- agent is not duplicated
+
+Reject:
+
+unknown agent
+inactive agent
+non-core agent
+duplicate agent
+
+Use the existing Agent table.
+
+Do not hardcode database UUIDs.
+
+==================================================
+16. AUTO AGENT SELECTION
+==================================================
+
+If:
+
+expert_selection_mode = "auto"
+
+select agents deterministically.
+
+For the first implementation:
+
+Select all active core agents.
+
+Do not use an LLM.
+
+Do not use Groq.
+
+Do not create a machine-learning ranking.
+
+Document this behavior.
+
+Later modules can improve automatic selection.
+
+==================================================
+17. AGENT FACTORY RELATIONSHIP
+==================================================
+
+Do not replace Module 4's AgentFactory.
+
+The responsibilities should remain separate:
+
+Database Agent:
+    stores agent metadata
+
+AgentFactory:
+    creates runtime AI agent
+
+Debate creation:
+    stores which agents participate
+
+Future Debate Orchestrator:
+    will instantiate those agents and execute them
+
+For this module, debate creation should NOT instantiate runtime AI agents.
+
+==================================================
+18. DATABASE MIGRATION
+==================================================
+
+If the many-to-many relationship does not already exist:
+
+Create an Alembic migration.
+
+For example:
+
+debate_agents
+
+with:
+
+- debate_id
+- agent_id
+- created_at
+
+Add an appropriate unique constraint such as:
+
+UNIQUE(debate_id, agent_id)
+
+Add indexes where appropriate.
+
+Run:
+
+alembic upgrade head
+
+Verify migration succeeds.
+
+Do not modify unrelated tables.
+
+==================================================
+19. API SCHEMAS
+==================================================
+
+Create clean schemas.
+
+Suggested:
+
+backend/app/schemas/debate.py
+
+Possible schemas:
+
+DebateCreateRequest
+DebateAgentResponse
+DebateResponse
+DebateListResponse
+
+Adapt to existing schema conventions.
+
+Do not expose SQLAlchemy models directly as API responses.
+
+==================================================
+20. SERVICE LAYER
+==================================================
+
+Keep business logic out of API routes where practical.
+
+Suggested:
+
+backend/app/services/debate_service.py
+
+Responsibilities:
+
+- validate selected agents
+- create debate
+- assign agents
+- retrieve user's debates
+- retrieve a user's single debate
+
+Do not put all logic inside:
+
+api/debates.py
+
+Keep the endpoint layer thin.
+
+==================================================
+21. API ROUTER
+==================================================
+
+Create:
+
+backend/app/api/debates.py
+
+or adapt to existing routing conventions.
+
+Register it in the main FastAPI application.
+
+Ensure Swagger shows:
+
+POST /api/v1/debates
+GET /api/v1/debates
+GET /api/v1/debates/{debate_id}
+
+All protected by Bearer authentication.
+
+==================================================
+22. FRONTEND — DEBATE CREATION
+==================================================
+
+Now implement the minimum actual frontend for this module.
+
+Create a protected page such as:
+
+/app/debates/new
+
+or:
+
+/debates/new
+
+Follow the existing routing structure.
+
+The page should contain:
+
+1. Debate topic input
+2. Agent selection
+3. Selection mode
+4. Domain tags
+5. Debate mode
+6. Number of rounds
+7. Evidence verification toggle
+8. Create Debate button
+
+Do not build the debate execution UI.
+
+==================================================
+23. AGENT SELECTION UI
+==================================================
+
+Display the six core agents:
+
+□ Economist
+□ Lawyer
+□ Doctor
+□ Scientist
+□ Ethicist
+□ Analyst
+
+Each should show:
+
+- name
+- short description
+- selectable state
+
+For manual selection:
+
+Allow user to select multiple agents.
+
+Prevent submission with fewer than 2 agents.
+
+For auto selection:
+
+Disable or hide manual selection if appropriate.
+
+Clearly show that AUTO mode currently selects all active core agents.
+
+==================================================
+24. FRONTEND FORM VALIDATION
+==================================================
+
+Validate before API submission:
+
+- topic required
+- topic not empty
+- at least 2 agents in manual mode
+- rounds within allowed range
+- valid mode
+- valid selection mode
+
+Display useful validation errors.
+
+Do not rely only on frontend validation.
+
+Backend validation remains authoritative.
+
+==================================================
+25. FRONTEND API INTEGRATION
+==================================================
+
+Use the existing centralized API client from previous modules.
+
+Do NOT hardcode:
+
+http://localhost:8000
+
+Use the existing environment-based API URL.
+
+The request must automatically include the authenticated Bearer token.
+
+Do not implement another authentication mechanism.
+
+==================================================
+26. AFTER DEBATE CREATION
+==================================================
+
+After successful creation:
+
+Redirect to a simple debate details page.
+
+For example:
+
+/app/debates/{id}
+
+This page should show:
+
+- Topic
+- Selected agents
+- Status
+- Mode
+- Number of rounds
+- Evidence verification setting
+- Created time
+
+The page should clearly show something like:
+
+Status: Created
+
+Do NOT start the debate.
+
+Do NOT show fake debate responses.
+
+Do NOT call Groq from this page.
+
+==================================================
+27. DEBATE LIST PAGE
+==================================================
+
+Create a simple protected page:
+
+/app/debates
+
+Show the authenticated user's debates.
+
+Each item should show:
+
+- topic
+- status
+- created date
+- participating agents
+
+Clicking a debate should open its details page.
+
+Do not build:
+
+- transcript
+- results
+- analytics
+- judge output
+
+==================================================
+28. NO DEBATE EXECUTION
+==================================================
+
+This is critical.
+
+Creating a debate must NOT cause:
+
+Groq request
+LLM request
+Agent response
+Round execution
+WebSocket connection
+background job
+LangGraph execution
+
+The created debate should simply exist in the database waiting for the next module.
+
+==================================================
+29. TESTS
+==================================================
+
+Create backend tests.
+
+At minimum test:
+
+1. Authenticated user can create debate.
+2. Unauthenticated user cannot create debate.
+3. Topic is required.
+4. Empty topic rejected.
+5. One selected agent rejected.
+6. Two valid agents accepted.
+7. Duplicate agent rejected.
+8. Unknown agent rejected.
+9. Inactive agent rejected.
+10. Non-core agent rejected.
+11. Manual selection stores selected agents.
+12. Auto mode selects all active core agents.
+13. Debate status is created/draft.
+14. Debate creation does NOT call Groq.
+15. Debate-agent associations are stored correctly.
+16. User can list own debates.
+17. User cannot see another user's debates.
+18. User can retrieve own debate.
+19. User cannot retrieve another user's debate.
+20. Invalid debate ID handled correctly.
+21. Transaction rollback works when agent assignment fails.
+22. Existing authentication tests still pass.
+23. Existing Module 3 tests still pass.
+
+Tests must not make real LLM API calls.
+
+==================================================
+30. FRONTEND VERIFICATION
+==================================================
+
+Verify manually:
+
+1. Login.
+2. Open new debate page.
+3. Enter a topic.
+4. Select 2+ agents.
+5. Create debate.
+6. Verify success.
+7. Open debate details.
+8. Verify selected agents.
+9. Open debate list.
+10. Verify debate appears.
+11. Refresh page.
+12. Verify data comes from backend.
+13. Logout.
+14. Verify protected debate pages redirect to login.
+
+Also test:
+
+- one-agent selection
+- empty topic
+- auto selection
+- multiple agents
+
+==================================================
+31. REAL DATABASE VERIFICATION
+==================================================
+
+After creating a debate, verify PostgreSQL contains:
+
+debates:
+- correct user_id
+- correct topic
+- correct configuration
+- correct status
+
+debate_agents:
+- correct debate_id
+- correct agent_id values
+
+Verify no duplicate association rows exist.
+
+Verify no runtime LLM call occurred during debate creation.
+
+==================================================
+32. API DOCUMENTATION
+==================================================
+
+Swagger should show:
+
+POST /api/v1/debates
+GET /api/v1/debates
+GET /api/v1/debates/{debate_id}
+
+All protected by Bearer authentication.
+
+Document request and response schemas properly.
+
+==================================================
+33. README UPDATE
+==================================================
+
+Add:
+
+### Debate Creation and Agent Selection
+
+Explain:
+
+- authenticated debate creation
+- manual agent selection
+- automatic agent selection
+- six core agents
+- debate configuration
+- debate ownership
+- debate status
+- debate-agent relationship
+
+Document that:
+
+Creating a debate does NOT start the debate.
+
+The actual debate execution belongs to a later module.
+
+Update implementation status:
+
+Implemented:
+
+✓ Project foundation
+✓ PostgreSQL
+✓ Redis
+✓ FastAPI
+✓ React
+✓ SQLAlchemy
+✓ Alembic
+✓ User/Debate/Agent models
+✓ Authentication
+✓ JWT
+✓ Password hashing
+✓ Protected routes
+✓ LLM provider abstraction
+✓ Groq provider
+✓ BaseAgent
+✓ Economist Agent
+✓ Lawyer Agent
+✓ Doctor Agent
+✓ Scientist Agent
+✓ Ethicist Agent
+✓ Analyst Agent
+✓ Agent factory
+✓ Debate creation
+✓ Agent selection
+✓ Debate-agent relationships
+✓ Debate ownership
+
+Not yet implemented:
+
+- Debate orchestration
+- Debate rounds
+- Agent-to-agent communication
+- LangGraph
+- WebSockets
+- Live transcript
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Debate results
+- Analytics
+- PDF reports
+- Custom agents
+
+==================================================
+34. REGRESSION TESTING
+==================================================
+
+After implementation verify:
+
+✓ PostgreSQL works
+✓ Redis works
+✓ FastAPI starts
+✓ Frontend starts
+✓ Health endpoint works
+✓ Register works
+✓ Login works
+✓ /auth/me works
+✓ Groq test endpoint works
+✓ All six role-based agents still work
+✓ Existing agent seed data remains intact
+✓ Alembic works
+✓ Docker Compose works
+✓ Existing tests pass
+
+Do not break previous modules.
+
+==================================================
+35. ACTUAL VERIFICATION
+==================================================
+
+Do not simply say "implemented."
+
+Actually:
+
+1. Inspect the current code.
+2. Implement the module.
+3. Run Alembic migration if required.
+4. Run backend tests.
+5. Run existing tests.
+6. Start backend.
+7. Start frontend.
+8. Create a real authenticated debate.
+9. Verify it exists in PostgreSQL.
+10. Verify agent relationships.
+11. Verify list endpoint.
+12. Verify detail endpoint.
+13. Verify another user cannot access it.
+14. Verify no LLM call occurs during creation.
+15. Verify frontend flow.
+16. Fix errors directly related to Module 5.
+
+Do not fabricate test results.
+
+==================================================
+36. STOP CONDITION
+==================================================
+
+When MODULE 5 is fully implemented and verified, STOP.
+
+Do NOT automatically implement:
+
+- Debate execution
+- Debate rounds
+- Agent-to-agent communication
+- LangGraph
+- WebSockets
+- Evidence retrieval
+- Fact verification
+- Claim extraction
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Analytics
+- PDF reports
+- Custom agents
+
+==================================================
+37. FINAL REPORT
+==================================================
+
+At the end report:
+
+A. Files created/modified
+
+B. Database schema changes
+
+C. Alembic migration
+
+D. Debate creation architecture
+
+E. Agent selection architecture
+
+F. Supported selection modes
+
+G. API endpoints
+
+H. Frontend pages/components
+
+I. Authentication/ownership handling
+
+J. Automated tests performed
+
+K. Test results
+
+L. Real database verification
+
+M. Frontend verification
+
+N. Regression test results for Modules 0–4
+
+O. Any issues discovered
+
+P. Exact next module
+
+The next module after this will be:
+
+MODULE 6 — Debate Orchestration + Multi-Agent Debate Engine
+
+But DO NOT implement MODULE 6 in this task.

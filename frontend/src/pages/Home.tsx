@@ -27,16 +27,30 @@ export default function Home() {
             Welcome, {user?.email}
           </h2>
           <p className="text-gray-400 mb-8">
-            The debate interface is coming in a later module.
+            Create a debate, choose the participating agents and manage your
+            debates. Debate execution arrives in a later module.
           </p>
 
-          <Link
-            to="/agents"
-            className="inline-block bg-indigo-600 hover:bg-indigo-700 rounded-lg px-4 py-2 text-sm font-semibold mb-8"
-          >
-            Test Role-Based Agents
-          </Link>
-
+          <div className="flex flex-wrap gap-3 mb-8">
+            <Link
+              to="/debates/new"
+              className="inline-block bg-indigo-600 hover:bg-indigo-700 rounded-lg px-4 py-2 text-sm font-semibold"
+            >
+              New Debate
+            </Link>
+            <Link
+              to="/debates"
+              className="inline-block bg-gray-800 hover:bg-gray-700 rounded-lg px-4 py-2 text-sm font-semibold"
+            >
+              My Debates
+            </Link>
+            <Link
+              to="/agents"
+              className="inline-block bg-gray-800 hover:bg-gray-700 rounded-lg px-4 py-2 text-sm font-semibold"
+            >
+              Test Role-Based Agents
+            </Link>
+          </div>
         <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
           <h3 className="text-lg font-semibold mb-4">Account</h3>
           <div className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3">

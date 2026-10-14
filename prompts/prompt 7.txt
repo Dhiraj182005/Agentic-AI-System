@@ -1,0 +1,1253 @@
+We have completed and verified:
+
+✓ MODULE 0 — Project Foundation
+✓ MODULE 1 — Database Layer
+✓ MODULE 2 — Authentication
+✓ MODULE 3 — LLM Provider + Base Agent
+✓ MODULE 4 — Core Role-Based AI Agents
+✓ MODULE 5 — Debate Creation + Agent Selection
+✓ MODULE 6 — Debate Orchestration + Multi-Agent Debate Engine
+
+Current working architecture:
+
+Authenticated User
+      ↓
+Debate Creation
+      ↓
+Agent Selection
+      ↓
+PostgreSQL
+      ↓
+Debate Engine
+      ↓
+Rounds
+      ↓
+Sequential Agent Turns
+      ↓
+BaseAgent
+      ↓
+GroqProvider
+      ↓
+Groq API
+      ↓
+Persist Transcript
+
+The system currently supports:
+
+- User authentication
+- Debate creation
+- Core agent selection
+- Six role-based agents
+- Debate rounds
+- Sequential agent execution
+- Persistent debate messages
+- Debate status
+- Transcript API
+- Round API
+
+Now implement ONLY:
+
+==================================================
+MODULE 7 — LIVE DEBATE STREAMING + WEBSOCKETS
+==================================================
+
+The purpose of this module is to allow the frontend to observe a running debate in real time.
+
+Current behavior:
+
+POST /api/v1/debates/{debate_id}/start
+
+runs the debate and persists messages.
+
+After this module, the frontend should be able to connect to a WebSocket and receive events while the debate is running.
+
+Conceptually:
+
+Frontend
+    ↓
+WebSocket
+    ↓
+FastAPI WebSocket endpoint
+    ↓
+Debate event manager
+    ↓
+Debate engine
+    ↓
+Agent generates response
+    ↓
+Message persisted
+    ↓
+Event broadcast
+    ↓
+Frontend displays response immediately
+
+==================================================
+IMPORTANT SCOPE
+==================================================
+
+Implement ONLY:
+
+- WebSocket infrastructure
+- authenticated WebSocket connections
+- debate-specific channels
+- connection management
+- real-time debate events
+- real-time round events
+- real-time agent message events
+- connection/disconnection handling
+- frontend WebSocket client
+- live transcript updates
+
+DO NOT implement:
+
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Argument scoring
+- Judge AI
+- Winner selection
+- Analytics
+- PDF reports
+- Custom agents
+- New LLM providers
+- New agents
+- LangGraph
+- Redis Pub/Sub
+- Celery
+- Kafka
+- RabbitMQ
+- distributed WebSocket infrastructure
+
+Keep this implementation suitable for the current single-backend academic MVP.
+
+==================================================
+1. FIRST INSPECT THE CURRENT PROJECT
+==================================================
+
+Before changing anything:
+
+1. Inspect the Module 6 DebateEngine.
+2. Inspect RoundManager.
+3. Inspect TurnManager.
+4. Inspect debate message persistence.
+5. Inspect debate status handling.
+6. Inspect existing authentication.
+7. Inspect FastAPI application setup.
+8. Inspect frontend debate detail page.
+9. Inspect frontend API client.
+10. Inspect existing tests.
+11. Verify Modules 0–6 are working.
+
+Do not rewrite working Module 6 code.
+
+Make the smallest clean changes required to emit real-time events.
+
+==================================================
+2. WEBSOCKET ARCHITECTURE
+==================================================
+
+Create a clean WebSocket layer.
+
+Suggested structure:
+
+backend/app/
+│
+├── websocket/
+│   ├── __init__.py
+│   ├── manager.py
+│   ├── events.py
+│   └── auth.py
+│
+└── api/
+    └── websocket.py
+
+Adapt this to the current architecture.
+
+Do not create unnecessary abstractions.
+
+==================================================
+3. CONNECTION MANAGER
+==================================================
+
+Create a WebSocket connection manager.
+
+Responsibilities:
+
+- accept connections
+- authenticate connections
+- track connected clients
+- associate clients with debate IDs
+- broadcast events to clients watching a debate
+- remove disconnected clients
+
+Conceptual structure:
+
+debate_id
+    ↓
+set of WebSocket connections
+
+Example:
+
+connections = {
+    debate_id_1: {socket1, socket2},
+    debate_id_2: {socket3}
+}
+
+Do not use a global list containing every socket without debate association.
+
+==================================================
+4. SINGLE-PROCESS ARCHITECTURE
+==================================================
+
+This is an academic MVP running on one backend process.
+
+An in-memory connection manager is acceptable.
+
+Do NOT introduce:
+
+- Redis Pub/Sub
+- Kafka
+- RabbitMQ
+- distributed event buses
+
+Do not overengineer this module.
+
+Document that the WebSocket manager is process-local and would require shared infrastructure for multi-instance deployment.
+
+==================================================
+5. WEBSOCKET ENDPOINT
+==================================================
+
+Create:
+
+/ws/debates/{debate_id}
+
+or an equivalent route consistent with the current project.
+
+The WebSocket must:
+
+1. Accept connection.
+2. Authenticate user.
+3. Verify the debate exists.
+4. Verify the authenticated user owns the debate.
+5. Register the connection with the debate.
+6. Keep the connection alive.
+7. Send events.
+8. Remove the connection when disconnected.
+
+Unauthorized users must not be able to subscribe to another user's debate.
+
+==================================================
+6. WEBSOCKET AUTHENTICATION
+==================================================
+
+Reuse the authentication architecture from Module 2.
+
+Do NOT create a second authentication system.
+
+The WebSocket must validate the existing JWT.
+
+Choose a practical approach compatible with the current frontend.
+
+Preferred:
+
+WebSocket query parameter:
+
+/ws/debates/{debate_id}?token=<JWT>
+
+If the existing architecture has a safer compatible mechanism, use it.
+
+Important:
+
+- never log the JWT
+- never broadcast the JWT
+- never store the JWT in the database
+- reject invalid/expired tokens
+
+If authentication fails, close the WebSocket with an appropriate close code.
+
+Document the authentication mechanism.
+
+==================================================
+7. WEBSOCKET EVENT FORMAT
+==================================================
+
+Use a consistent JSON event structure.
+
+Every event should contain:
+
+{
+    "type": "...",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {...}
+}
+
+Example:
+
+{
+    "type": "debate_started",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {}
+}
+
+Keep the format consistent.
+
+==================================================
+8. EVENT TYPES
+==================================================
+
+Implement these events:
+
+1. debate_started
+
+2. round_started
+
+3. agent_turn_started
+
+4. agent_message
+
+5. agent_turn_completed
+
+6. round_completed
+
+7. debate_completed
+
+8. debate_failed
+
+9. error
+
+==================================================
+9. EVENT PAYLOADS
+==================================================
+
+Use clean payloads.
+
+--------------------------------------------------
+debate_started
+--------------------------------------------------
+
+{
+    "type": "debate_started",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {
+        "status": "running"
+    }
+}
+
+--------------------------------------------------
+round_started
+--------------------------------------------------
+
+{
+    "type": "round_started",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {
+        "round_number": 1
+    }
+}
+
+--------------------------------------------------
+agent_turn_started
+--------------------------------------------------
+
+{
+    "type": "agent_turn_started",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {
+        "round_number": 1,
+        "turn_number": 1,
+        "agent": {
+            "id": "...",
+            "name": "Economist",
+            "role": "economist"
+        }
+    }
+}
+
+--------------------------------------------------
+agent_message
+--------------------------------------------------
+
+{
+    "type": "agent_message",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {
+        "round_number": 1,
+        "turn_number": 1,
+        "message_type": "opening",
+        "message_id": "...",
+        "agent": {
+            "id": "...",
+            "name": "Economist",
+            "role": "economist"
+        },
+        "content": "..."
+    }
+}
+
+IMPORTANT:
+
+The message should be broadcast only after the response has been successfully generated and persisted.
+
+Do not broadcast fake or unpersisted content.
+
+--------------------------------------------------
+agent_turn_completed
+--------------------------------------------------
+
+Include:
+
+- round number
+- turn number
+- agent
+
+--------------------------------------------------
+round_completed
+--------------------------------------------------
+
+Include:
+
+- round number
+
+--------------------------------------------------
+debate_completed
+--------------------------------------------------
+
+{
+    "type": "debate_completed",
+    "debate_id": "...",
+    "timestamp": "...",
+    "data": {
+        "status": "completed"
+    }
+}
+
+--------------------------------------------------
+debate_failed
+--------------------------------------------------
+
+Include:
+
+- status
+- safe error message
+
+Never expose stack traces or API keys.
+
+==================================================
+10. EVENT ORDER
+==================================================
+
+Events must be emitted in deterministic order.
+
+For one round:
+
+debate_started
+
+round_started
+
+agent_turn_started
+agent_message
+agent_turn_completed
+
+agent_turn_started
+agent_message
+agent_turn_completed
+
+...
+
+round_completed
+
+Next round...
+
+debate_completed
+
+Example:
+
+debate_started
+ ↓
+round_started
+ ↓
+economist turn started
+ ↓
+economist message
+ ↓
+economist turn completed
+ ↓
+lawyer turn started
+ ↓
+lawyer message
+ ↓
+lawyer turn completed
+ ↓
+round completed
+ ↓
+debate completed
+
+Do not send events out of order.
+
+==================================================
+11. INTEGRATE WITH DEBATE ENGINE
+==================================================
+
+Modify Module 6 only where necessary.
+
+The DebateEngine should emit lifecycle events.
+
+Conceptually:
+
+DebateEngine
+    ↓
+event_manager.emit(...)
+    ↓
+WebSocketManager.broadcast(...)
+    ↓
+connected clients
+
+Do NOT put WebSocket-specific code directly into every agent.
+
+Agents should remain unaware of WebSockets.
+
+Correct:
+
+DebateEngine → EventManager → WebSocketManager
+
+Incorrect:
+
+EconomistAgent → WebSocket
+LawyerAgent → WebSocket
+ScientistAgent → WebSocket
+
+==================================================
+12. EVENT MANAGER
+==================================================
+
+Create a small event abstraction if useful.
+
+For example:
+
+DebateEventManager
+
+Responsibilities:
+
+- construct event payloads
+- publish events to connection manager
+
+Keep it simple.
+
+Do not create a generic enterprise event bus.
+
+==================================================
+13. MESSAGE PERSISTENCE ORDER
+==================================================
+
+For an agent message:
+
+1. Agent turn starts.
+2. Emit agent_turn_started.
+3. Generate LLM response.
+4. Persist message to PostgreSQL.
+5. Commit transaction.
+6. Emit agent_message.
+7. Emit agent_turn_completed.
+
+This ordering is important.
+
+The frontend should never receive an `agent_message` that does not exist in PostgreSQL.
+
+==================================================
+14. ROUND EVENT ORDER
+==================================================
+
+Round execution:
+
+1. Create round.
+2. Mark round running.
+3. Commit.
+4. Emit round_started.
+5. Execute turns.
+6. Mark round completed.
+7. Commit.
+8. Emit round_completed.
+
+==================================================
+15. DEBATE EVENT ORDER
+==================================================
+
+When start begins:
+
+1. Verify debate can start.
+2. Mark debate running.
+3. Commit.
+4. Emit debate_started.
+5. Run rounds.
+6. Mark debate completed.
+7. Commit.
+8. Emit debate_completed.
+
+If failure:
+
+1. Mark debate failed.
+2. Commit.
+3. Emit debate_failed.
+
+==================================================
+16. RECONNECT BEHAVIOR
+==================================================
+
+Implement simple reconnect behavior.
+
+If the browser disconnects:
+
+- remove the socket
+- do not stop the debate
+- do not modify debate state
+
+If the browser reconnects:
+
+- authenticate again
+- verify ownership again
+- connect again
+- fetch current debate state through normal HTTP
+
+Do NOT attempt to replay the entire missed WebSocket event history.
+
+The frontend should use:
+
+GET /api/v1/debates/{debate_id}
+
+and:
+
+GET /api/v1/debates/{debate_id}/messages
+
+to recover current state.
+
+==================================================
+17. WEBSOCKET DOES NOT CONTROL THE DEBATE
+==================================================
+
+Closing the WebSocket must NOT:
+
+- stop the debate
+- cancel the LLM request
+- mark the debate failed
+- delete messages
+
+The WebSocket is only an observation channel.
+
+The DebateEngine remains responsible for execution.
+
+==================================================
+18. FRONTEND WEBSOCKET CLIENT
+==================================================
+
+Create a reusable WebSocket client.
+
+Suggested:
+
+frontend/src/services/websocket.ts
+
+or equivalent.
+
+Responsibilities:
+
+- connect
+- disconnect
+- parse JSON events
+- dispatch events
+- reconnect when appropriate
+- handle errors
+
+Do not duplicate WebSocket code in every component.
+
+==================================================
+19. FRONTEND DEBATE PAGE
+==================================================
+
+Update the existing debate detail page.
+
+When:
+
+status = running
+
+connect to:
+
+/ws/debates/{debate_id}
+
+When:
+
+status = created
+
+do not need to connect yet.
+
+When:
+
+status = completed
+
+the page can disconnect because the final transcript is available through HTTP.
+
+==================================================
+20. LIVE TRANSCRIPT
+==================================================
+
+The existing transcript UI should update immediately when:
+
+agent_message
+
+is received.
+
+Do not wait for:
+
+GET /messages
+
+after every agent response.
+
+The WebSocket event should append the newly persisted message to the current UI state.
+
+==================================================
+21. DUPLICATE MESSAGE PROTECTION
+==================================================
+
+The frontend must avoid adding the same message twice.
+
+Use:
+
+message_id
+
+as the unique identifier.
+
+If the same `agent_message` event arrives twice:
+
+do not duplicate it in the UI.
+
+==================================================
+22. FRONTEND STATE
+==================================================
+
+Track:
+
+- websocket connection state
+- debate status
+- current round
+- current agent turn
+- transcript messages
+- errors
+
+Possible WebSocket states:
+
+connecting
+connected
+disconnected
+error
+
+Do not introduce a large state-management framework.
+
+Use the existing React architecture.
+
+==================================================
+23. LIVE STATUS UI
+==================================================
+
+Show simple status information:
+
+Debate Status:
+- Created
+- Running
+- Completed
+- Failed
+
+When running:
+
+Round 1 / 3
+
+Current Speaker:
+Economist
+
+Do not fake progress.
+
+Use actual WebSocket events.
+
+==================================================
+24. NO TOKEN STREAMING
+==================================================
+
+Do NOT stream individual LLM tokens.
+
+The event:
+
+agent_message
+
+should contain the complete generated agent response.
+
+Token streaming can be implemented later if required.
+
+==================================================
+25. WEBSOCKET ERROR HANDLING
+==================================================
+
+Handle:
+
+- invalid token
+- expired token
+- missing token
+- unauthorized debate
+- debate not found
+- connection failure
+- server disconnect
+- malformed event
+
+Do not expose internal stack traces.
+
+==================================================
+26. KEEP HTTP TRANSCRIPT API
+==================================================
+
+Do NOT remove:
+
+GET /api/v1/debates/{debate_id}/messages
+
+WebSocket is for real-time updates.
+
+HTTP remains the source for:
+
+- initial page load
+- reconnect recovery
+- historical transcript
+- completed debates
+
+==================================================
+27. TESTS — CONNECTION MANAGER
+==================================================
+
+Test:
+
+1. connection registration
+2. connection removal
+3. broadcast to one client
+4. broadcast to multiple clients
+5. disconnected socket removal
+6. broadcast failure does not crash the manager
+
+Use mocked WebSockets.
+
+==================================================
+28. TESTS — WEBSOCKET AUTH
+==================================================
+
+Test:
+
+1. valid JWT accepted
+2. missing token rejected
+3. invalid JWT rejected
+4. expired JWT rejected
+5. non-existent debate rejected
+6. another user's debate rejected
+
+Do not use real user secrets in tests.
+
+==================================================
+29. TESTS — EVENT ORDER
+==================================================
+
+Mock the LLM provider.
+
+Run a small two-agent two-round debate.
+
+Verify events occur in exactly this order:
+
+debate_started
+
+round_started
+agent_turn_started
+agent_message
+agent_turn_completed
+agent_turn_started
+agent_message
+agent_turn_completed
+round_completed
+
+round_started
+agent_turn_started
+agent_message
+agent_turn_completed
+agent_turn_started
+agent_message
+agent_turn_completed
+round_completed
+
+debate_completed
+
+==================================================
+30. TESTS — PERSISTENCE BEFORE BROADCAST
+==================================================
+
+Verify:
+
+agent_message
+
+is emitted only after the corresponding database message has been committed.
+
+Do not merely mock both calls independently.
+
+Test the intended ordering.
+
+==================================================
+31. TESTS — DISCONNECT
+==================================================
+
+Verify:
+
+1. Client disconnects.
+2. Debate continues.
+3. Remaining clients continue receiving events.
+4. Database transcript continues being persisted.
+5. Debate eventually completes.
+
+==================================================
+32. TESTS — RECONNECT
+==================================================
+
+Verify:
+
+1. Client disconnects.
+2. Debate continues.
+3. Client reconnects.
+4. Authentication is revalidated.
+5. Current debate status can be fetched.
+6. Current transcript can be fetched through HTTP.
+
+Do not implement event replay.
+
+==================================================
+33. REAL VERIFICATION
+==================================================
+
+After automated tests pass:
+
+Use a small real debate:
+
+- 2 agents
+- 2 rounds
+
+Example:
+
+Topic:
+"Should colleges require students to learn AI tools?"
+
+Agents:
+- Scientist
+- Ethicist
+
+Rounds:
+2
+
+Start the debate.
+
+Open the debate page.
+
+Verify:
+
+1. WebSocket connects.
+2. Status changes to Running.
+3. Round 1 appears.
+4. Scientist turn appears.
+5. Scientist response appears.
+6. Ethicist turn appears.
+7. Ethicist response appears.
+8. Round 1 completes.
+9. Round 2 appears.
+10. Responses appear live.
+11. Debate becomes Completed.
+12. Transcript remains available after refresh.
+
+Do not run a large debate.
+
+==================================================
+34. BROWSER VERIFICATION
+==================================================
+
+Use browser developer tools if necessary.
+
+Verify:
+
+Network → WebSocket
+
+shows an active connection such as:
+
+/ws/debates/<id>
+
+Verify messages are received as JSON.
+
+Do not expose the JWT in screenshots or reports.
+
+==================================================
+35. DATABASE VERIFICATION
+==================================================
+
+After the real test verify:
+
+debate.status = completed
+
+debate_rounds contain:
+
+round 1
+round 2
+
+debate_messages contain:
+
+2 agents × 2 rounds = 4 messages
+
+Verify each message has:
+
+- correct debate_id
+- correct round_id
+- correct agent_id
+- correct turn_number
+- correct content
+
+==================================================
+36. PERFORMANCE
+==================================================
+
+Do not add:
+
+- Redis Pub/Sub
+- Kafka
+- RabbitMQ
+- Celery
+- background worker infrastructure
+
+The connection manager can be in-memory.
+
+Keep the architecture simple.
+
+==================================================
+37. SECURITY
+==================================================
+
+Never log:
+
+- JWT tokens
+- passwords
+- Groq API keys
+
+Never send secrets through WebSocket events.
+
+Never allow a user to subscribe to another user's debate.
+
+Validate ownership before registering the WebSocket.
+
+==================================================
+38. README UPDATE
+==================================================
+
+Add:
+
+### Live Debate Streaming
+
+Explain:
+
+- WebSocket endpoint
+- JWT authentication
+- debate-specific connections
+- event types
+- live transcript
+- reconnect behavior
+- HTTP fallback for transcript recovery
+- single-process limitation
+
+Document:
+
+/ws/debates/{debate_id}
+
+Event types:
+
+- debate_started
+- round_started
+- agent_turn_started
+- agent_message
+- agent_turn_completed
+- round_completed
+- debate_completed
+- debate_failed
+- error
+
+Update implementation status:
+
+Implemented:
+
+✓ Project foundation
+✓ PostgreSQL
+✓ Redis
+✓ FastAPI
+✓ React
+✓ SQLAlchemy
+✓ Alembic
+✓ Authentication
+✓ JWT
+✓ Password hashing
+✓ LLM provider abstraction
+✓ Groq provider
+✓ BaseAgent
+✓ Six role-based agents
+✓ Agent factory
+✓ Debate creation
+✓ Agent selection
+✓ Debate-agent relationships
+✓ Debate orchestration
+✓ Debate rounds
+✓ Sequential agent turns
+✓ Debate transcript persistence
+✓ WebSocket connections
+✓ Live debate events
+✓ Live transcript
+
+Not yet implemented:
+
+- Evidence retrieval
+- Web search
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Argument scoring
+- Judge AI
+- Winner selection
+- Analytics dashboard
+- PDF reports
+- Custom agents
+- Token-level LLM streaming
+
+==================================================
+39. REGRESSION TESTING
+==================================================
+
+After implementation verify:
+
+✓ PostgreSQL works
+✓ Redis works
+✓ FastAPI starts
+✓ Frontend starts
+✓ Health endpoint works
+✓ Register works
+✓ Login works
+✓ /auth/me works
+✓ Groq provider works
+✓ All six agents work
+✓ Debate creation works
+✓ Agent selection works
+✓ Debate execution works
+✓ Transcript API works
+✓ Round API works
+✓ WebSocket works
+✓ Existing tests pass
+✓ Alembic works
+✓ Docker Compose works
+
+Do not break Modules 0–6.
+
+==================================================
+40. ACTUAL VERIFICATION
+==================================================
+
+Do not simply say "implemented."
+
+Actually:
+
+1. Inspect project.
+2. Implement WebSocket layer.
+3. Integrate event emission into DebateEngine.
+4. Run automated tests.
+5. Run regression tests.
+6. Start backend.
+7. Start frontend.
+8. Create a small test debate.
+9. Start it.
+10. Connect to WebSocket.
+11. Verify live events.
+12. Verify live transcript.
+13. Verify database persistence.
+14. Refresh browser.
+15. Verify transcript recovery through HTTP.
+16. Verify disconnect/reconnect behavior.
+17. Verify unauthorized access is rejected.
+18. Verify no secrets are exposed.
+19. Fix errors directly related to Module 7.
+
+Do not fabricate results.
+
+==================================================
+41. STOP CONDITION
+==================================================
+
+When MODULE 7 is fully implemented and verified, STOP.
+
+DO NOT automatically implement:
+
+- Evidence retrieval
+- Claim extraction
+- Fact verification
+- Fallacy detection
+- Argument evaluation
+- Judge AI
+- Winner selection
+- Analytics
+- PDF reports
+- Custom agents
+- Token-level streaming
+
+==================================================
+42. FINAL REPORT
+==================================================
+
+At the end report:
+
+A. Files created/modified
+
+B. WebSocket architecture
+
+C. Authentication mechanism
+
+D. WebSocket endpoint
+
+E. Event types
+
+F. DebateEngine integration
+
+G. Frontend WebSocket implementation
+
+H. Live transcript implementation
+
+I. Database changes, if any
+
+J. Automated tests performed
+
+K. Automated test results
+
+L. Real WebSocket debate test
+
+M. Browser verification
+
+N. Database verification
+
+O. Regression test results for Modules 0–6
+
+P. Issues discovered and fixes
+
+Q. Known limitations
+
+R. Exact next module
+
+The next module after this will be:
+
+MODULE 8 — Evidence Retrieval + Claim Extraction
+
+But DO NOT implement MODULE 8 in this task.

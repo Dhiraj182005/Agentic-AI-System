@@ -3,14 +3,16 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ApiClientError } from '../services/api'
 import { testAgent, type AgentTestResponse } from '../services/agents'
+import AgentMessage from '../components/AgentMessage'
+import AgentThinking from '../components/AgentThinking'
 
 const AGENT_OPTIONS = [
-  { identifier: 'economist', label: 'Economist' },
-  { identifier: 'lawyer', label: 'Lawyer' },
-  { identifier: 'doctor', label: 'Doctor' },
-  { identifier: 'scientist', label: 'Scientist' },
-  { identifier: 'ethicist', label: 'Ethicist' },
-  { identifier: 'analyst', label: 'Analyst' },
+  { identifier: 'economist', label: 'Economist', dot: 'bg-amber-400' },
+  { identifier: 'lawyer', label: 'Lawyer', dot: 'bg-sky-400' },
+  { identifier: 'doctor', label: 'Doctor', dot: 'bg-rose-400' },
+  { identifier: 'scientist', label: 'Scientist', dot: 'bg-emerald-400' },
+  { identifier: 'ethicist', label: 'Ethicist', dot: 'bg-violet-400' },
+  { identifier: 'analyst', label: 'Analyst', dot: 'bg-cyan-400' },
 ]
 
 export default function AgentTest() {
@@ -77,7 +79,7 @@ export default function AgentTest() {
             <select
               value={agent}
               onChange={(e) => setAgent(e.target.value)}
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              className="w-full appearance-none rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white focus:border-indigo-500 focus:outline-none"
             >
               {AGENT_OPTIONS.map((option) => (
                 <option key={option.identifier} value={option.identifier}>
@@ -86,6 +88,7 @@ export default function AgentTest() {
               ))}
             </select>
           </div>
+
           <div>
             <label className="block text-sm text-gray-400 mb-1">Message</label>
             <textarea
@@ -94,38 +97,31 @@ export default function AgentTest() {
               required
               rows={4}
               placeholder="Ask the agent to analyze a topic..."
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
             />
           </div>
+
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg py-2 font-semibold"
+            className="w-full rounded-lg bg-indigo-600 py-2.5 font-semibold transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? 'Analyzing...' : 'Send'}
           </button>
         </form>
 
+        {submitting && <AgentThinking agent={agent} />}
+
         {error && (
-          <p className="mt-4 text-red-400 text-sm bg-red-900/30 rounded-lg px-4 py-2">
-            {error}
-          </p>
+          <div className="mt-4 rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3">
+            <p className="text-sm font-medium text-red-300">Request failed</p>
+            <p className="mt-1 text-sm text-red-300/80">{error}</p>
+          </div>
         )}
 
         {result && (
-          <div className="mt-6 bg-gray-900 rounded-2xl border border-gray-800 p-6 space-y-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-400">
-                Agent: <span className="text-white">{result.role}</span> (
-                {result.agent})
-              </span>
-              <span className="text-gray-500">
-                {result.provider} / {result.model}
-              </span>
-            </div>
-            <div className="bg-gray-800 rounded-lg px-4 py-3 whitespace-pre-wrap text-sm leading-relaxed">
-              {result.response}
-            </div>
+          <div className="mt-6">
+            <AgentMessage result={result} />
           </div>
         )}
       </main>

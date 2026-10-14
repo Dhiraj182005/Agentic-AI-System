@@ -3,6 +3,9 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Home from './pages/Home'
 import AgentTest from './pages/AgentTest'
+import DebateList from './pages/DebateList'
+import DebateNew from './pages/DebateNew'
+import DebateDetail from './pages/DebateDetail'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -23,6 +26,30 @@ export default function App() {
         element={
           <ProtectedRoute>
             <AgentTest />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/debates"
+        element={
+          <ProtectedRoute>
+            <DebateList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/debates/new"
+        element={
+          <ProtectedRoute>
+            <DebateNew />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/debates/:debateId"
+        element={
+          <ProtectedRoute>
+            <DebateDetail />
           </ProtectedRoute>
         }
       />

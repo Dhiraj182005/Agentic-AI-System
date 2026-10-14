@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export const TOKEN_STORAGE_KEY = 'ai_debate_arena_token'
 
@@ -14,6 +14,30 @@ export function storeToken(token: string): void {
 
 export function clearStoredToken(): void {
   localStorage.removeItem(TOKEN_STORAGE_KEY)
+}
+
+/**
+ * Cheap local check before calling an authenticated endpoint.
+ *
+ * A token that is structurally broken or whose `exp` has already passed can
+ * never authenticate, so the app drops it locally instead of sending a
+ * request that is guaranteed to answer 401. The signature is NOT verified
+ * here: the backend remains the only authority, and a token that passes this
+ * check is always re-validated by the server.
+ */
+export function isUsableToken(token: string | null): boolean {
+  if (!token) return false
+  const parts = token.split('.')
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return false
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    const payload = JSON.parse(atob(padded)) as { exp?: unknown }
+    if (typeof payload.exp !== 'number') return true // let the server decide
+    return payload.exp * 1000 > Date.now()
+  } catch {
+    return false
+  }
 }
 
 export class ApiClientError extends Error {

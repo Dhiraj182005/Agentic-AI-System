@@ -1,0 +1,757 @@
+We are continuing the AI Debate Arena project.
+
+COMPLETED MODULES:
+- MODULE 0 — Project Foundation
+- MODULE 1 — Database Layer
+- MODULE 2 — Authentication
+- MODULE 3 — LLM Provider + Base Agent
+- MODULE 4 — Core Role-Based AI Agents
+- MODULE 5 — Debate Creation + Agent Selection
+- MODULE 6 — Debate Orchestration + Multi-Agent Debate Engine
+- MODULE 7 — Live Debate Streaming + WebSockets
+- MODULE 8 — Evidence Retrieval + Claim Extraction
+
+CURRENT STACK:
+
+Backend:
+- FastAPI
+- Python
+- async SQLAlchemy
+- Alembic
+- PostgreSQL
+- Redis
+- JWT authentication
+- Groq through the existing LLM provider abstraction
+
+Frontend:
+- React
+- Vite
+- TypeScript
+- TailwindCSS
+
+Infrastructure:
+- PostgreSQL + Redis through Docker Compose
+- FastAPI backend manually on Windows
+- React frontend manually
+
+IMPORTANT:
+Inspect the existing project before making any changes.
+
+Do NOT assume file names, schemas, services, or endpoint names.
+Reuse the existing architecture.
+
+==================================================
+MODULE 9 — FACT VERIFICATION + CLAIM EVALUATION
+==================================================
+
+GOAL:
+
+Build the next analysis layer that evaluates extracted claims using the evidence retrieved in MODULE 8.
+
+The system should:
+
+1. Load an extracted claim.
+2. Load its retrieved evidence.
+3. Evaluate whether the available evidence supports, contradicts, or is insufficient to evaluate the claim.
+4. Store a structured verification result.
+5. Display the result in the frontend.
+
+IMPORTANT:
+
+This module is about CLAIM EVALUATION.
+
+It is NOT about judging the entire debate yet.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+IMPLEMENT ONLY MODULE 9.
+
+DO NOT implement:
+
+- debate winner selection
+- overall debate score
+- agent ranking
+- fallacy detection
+- sentiment analysis
+- reputation system
+- voting
+- advanced analytics
+- leaderboard
+- autonomous debate continuation
+- new debate agents
+- new LLM provider
+- RAG/vector database
+- embeddings
+- background workers
+- Celery
+- Kafka
+- RabbitMQ
+- Redis Pub/Sub
+- browser automation
+- web scraping
+- automatic evidence generation
+- evidence fabrication
+
+Do NOT redesign the existing debate engine.
+
+Do NOT replace Groq.
+
+Do NOT replace the existing LLM provider abstraction.
+
+Do NOT redesign Module 8.
+
+Do NOT modify authentication unless absolutely necessary.
+
+==================================================
+STEP 1 — INSPECT MODULE 8
+==================================================
+
+Before coding, inspect the existing implementation of:
+
+- Claim model
+- Evidence model
+- Claim extraction service
+- EvidenceRetrievalService
+- EvidenceProvider abstraction
+- Tavily provider
+- claim extraction endpoints
+- evidence retrieval endpoints
+- debate ownership logic
+- existing LLM provider abstraction
+- frontend claims UI
+- frontend evidence UI
+- existing API client
+- existing tests
+- Alembic migrations
+
+Understand exactly how claims and evidence are currently represented.
+
+Reuse existing models and services.
+
+Do not create duplicate claim/evidence concepts.
+
+==================================================
+STEP 2 — VERIFICATION RESULT MODEL
+==================================================
+
+Create a model for storing the evaluation of a claim.
+
+Suggested model:
+
+ClaimVerification
+
+Fields:
+
+- id
+- claim_id
+- verdict
+- explanation
+- evidence_summary
+- confidence
+- created_at
+- updated_at
+
+Adapt names to the existing project conventions.
+
+The verdict must use a controlled set of values.
+
+Recommended:
+
+- supported
+- contradicted
+- insufficient_evidence
+
+Do NOT use:
+
+- true
+- false
+
+The reason is that evidence-based evaluation should communicate what the retrieved evidence indicates without pretending that the system has absolute truth.
+
+Confidence can use:
+
+- low
+- medium
+- high
+
+OR a numeric value if the existing architecture strongly benefits from it.
+
+Do not overcomplicate this.
+
+==================================================
+STEP 3 — DATABASE MIGRATION
+==================================================
+
+Create an Alembic migration for ClaimVerification.
+
+Requirements:
+
+- foreign key to Claim
+- appropriate indexes
+- correct cascade behavior
+- upgrade works
+- downgrade works
+
+Do not unnecessarily modify existing tables.
+
+Run the migration successfully.
+
+==================================================
+STEP 4 — VERIFICATION SERVICE
+==================================================
+
+Create a dedicated:
+
+ClaimVerificationService
+
+Responsibilities:
+
+1. Load the claim.
+2. Load evidence associated with the claim.
+3. Build a structured verification prompt.
+4. Send the claim + evidence to the existing LLM provider.
+5. Parse the structured response.
+6. Validate the response.
+7. Persist the verification result.
+8. Return the result.
+
+Do NOT make direct Groq SDK calls.
+
+Use the existing provider abstraction.
+
+==================================================
+STEP 5 — VERIFICATION PROMPT
+==================================================
+
+Create a carefully constrained system prompt for claim evaluation.
+
+The model must:
+
+- evaluate ONLY the provided claim
+- use ONLY the provided evidence
+- not use outside knowledge
+- not invent evidence
+- not invent sources
+- distinguish supporting evidence from contradictory evidence
+- identify insufficient evidence when sources do not adequately establish the claim
+- explain its reasoning briefly
+- remain neutral
+- not evaluate the personality or quality of the agent
+
+The model should return structured JSON.
+
+Example:
+
+{
+  "verdict": "supported",
+  "confidence": "medium",
+  "explanation": "The retrieved sources provide evidence consistent with the claim.",
+  "evidence_summary": "Source A reports ..., while Source B ..."
+}
+
+The exact schema can be adapted to the project.
+
+==================================================
+STEP 6 — IMPORTANT EVIDENCE RULE
+==================================================
+
+The LLM MUST NOT create evidence.
+
+The verification service may only reference evidence already stored in the Evidence table.
+
+For every source mentioned in the verification result, there must be a corresponding stored evidence record.
+
+If there is no evidence:
+
+verdict = insufficient_evidence
+
+Do NOT allow the LLM to invent:
+
+- URLs
+- article titles
+- organizations
+- statistics
+- quotations
+- citations
+
+==================================================
+STEP 7 — EVIDENCE SUFFICIENCY
+==================================================
+
+Implement sensible handling for claims with:
+
+1. No evidence
+2. One evidence result
+3. Multiple evidence results
+4. Conflicting evidence
+5. Irrelevant evidence
+
+Examples:
+
+No evidence:
+→ insufficient_evidence
+
+Evidence directly supports the claim:
+→ supported
+
+Evidence directly contradicts the claim:
+→ contradicted
+
+Evidence is ambiguous or insufficient:
+→ insufficient_evidence
+
+Sources disagree:
+→ do not force supported/contradicted.
+→ use insufficient_evidence when the conflict cannot be resolved from the provided evidence.
+
+Do not pretend certainty where evidence is inconclusive.
+
+==================================================
+STEP 8 — STRUCTURED OUTPUT VALIDATION
+==================================================
+
+Create a Pydantic schema for the LLM verification response.
+
+Validate:
+
+- verdict
+- confidence
+- explanation
+- evidence_summary
+
+Handle:
+
+- invalid JSON
+- markdown-wrapped JSON
+- missing fields
+- invalid verdict
+- invalid confidence
+- empty explanation
+
+Do not persist invalid results.
+
+Return a controlled application error when parsing fails.
+
+==================================================
+STEP 9 — VERIFICATION API
+==================================================
+
+Add an authenticated endpoint.
+
+Suggested:
+
+POST
+
+/api/v1/claims/{claim_id}/verify
+
+Requirements:
+
+- JWT authentication
+- verify claim exists
+- verify the claim belongs to a debate owned by the current user
+- load stored evidence
+- perform evaluation
+- persist result
+- return result
+
+IMPORTANT:
+
+This endpoint must NOT automatically perform Tavily retrieval.
+
+Verification should use evidence already retrieved by Module 8.
+
+If no evidence exists, return:
+
+insufficient_evidence
+
+without pretending verification was performed successfully.
+
+You may choose either:
+
+A) return a structured insufficient_evidence result
+
+OR
+
+B) return a clear validation response requiring evidence retrieval first
+
+Prefer A because it keeps the API useful.
+
+==================================================
+STEP 10 — GET VERIFICATION RESULT
+==================================================
+
+Add:
+
+GET
+
+/api/v1/claims/{claim_id}/verification
+
+Requirements:
+
+- authenticated
+- ownership checked
+- read from database
+- do NOT call the LLM
+- do NOT call Tavily
+- return the latest stored verification result
+
+If no verification exists, return the project's appropriate 404/not-found response.
+
+==================================================
+STEP 11 — RE-VERIFICATION
+==================================================
+
+Allow a claim to be evaluated again after new evidence has been retrieved.
+
+Do not create uncontrolled duplicate verification records.
+
+Choose a clean strategy consistent with the existing architecture:
+
+Option A:
+Maintain one current verification result per claim and update it.
+
+Option B:
+Maintain verification history and expose the latest result.
+
+Prefer the simpler approach unless the existing architecture already supports history.
+
+If using one current result per claim, enforce uniqueness on claim_id.
+
+==================================================
+STEP 12 — VERIFICATION RESULT EXPLANATION
+==================================================
+
+The stored explanation should be concise and understandable.
+
+Example:
+
+Claim:
+"X causes Y."
+
+Verdict:
+Contradicted
+
+Confidence:
+High
+
+Explanation:
+"The retrieved sources report evidence inconsistent with the claim."
+
+Do not generate long essays.
+
+Do not expose hidden chain-of-thought.
+
+Store only a concise explanation/summary that supports the displayed verdict.
+
+==================================================
+STEP 13 — FRONTEND INTEGRATION
+==================================================
+
+Update the existing claims UI from Module 8.
+
+For each claim display:
+
+- claim text
+- agent
+- claim type
+- retrieved evidence
+- verification status
+
+Add a button:
+
+"Verify Claim"
+
+When clicked:
+
+POST /api/v1/claims/{claim_id}/verify
+
+After success, display:
+
+Verdict:
+Supported / Contradicted / Insufficient Evidence
+
+Confidence:
+Low / Medium / High
+
+Explanation:
+...
+
+IMPORTANT:
+
+Do NOT visually present the result as absolute truth.
+
+Use neutral labels such as:
+
+"Evidence Evaluation"
+
+rather than:
+
+"Truth Result"
+
+==================================================
+STEP 14 — VERDICT UI
+==================================================
+
+Use clear visual distinction between:
+
+SUPPORTED
+CONTRADICTED
+INSUFFICIENT EVIDENCE
+
+The exact Tailwind styling should match the existing project.
+
+Do not redesign the entire frontend.
+
+Do not introduce a new UI framework.
+
+==================================================
+STEP 15 — EVIDENCE LINKING
+==================================================
+
+The verification result should be traceable to the evidence used.
+
+If the database schema supports it cleanly, store the IDs of evidence records considered by the evaluation.
+
+Otherwise ensure the verification explanation references only evidence already associated with the claim.
+
+The frontend should allow the user to inspect the retrieved sources.
+
+Do not hide the underlying evidence.
+
+==================================================
+STEP 16 — OWNERSHIP + SECURITY
+==================================================
+
+Enforce:
+
+Current user
+    ↓
+Debate
+    ↓
+Claim
+    ↓
+Evidence
+    ↓
+Verification
+
+A user must never be able to verify or retrieve verification results for another user's claim.
+
+Test this explicitly.
+
+Do not expose:
+
+- JWT secrets
+- Groq API key
+- Tavily API key
+- internal prompts
+- database credentials
+
+==================================================
+STEP 17 — API ERROR HANDLING
+==================================================
+
+Handle:
+
+- claim not found
+- unauthorized user
+- no evidence
+- LLM provider unavailable
+- malformed LLM response
+- invalid verdict
+- provider timeout
+- database failure
+
+Use existing FastAPI error-handling conventions.
+
+Do not expose internal stack traces.
+
+==================================================
+STEP 18 — TESTING
+==================================================
+
+Add backend tests for:
+
+1. ClaimVerification model.
+2. Migration.
+3. Verification service with mocked LLM.
+4. Supported verdict.
+5. Contradicted verdict.
+6. Insufficient evidence.
+7. No evidence.
+8. Conflicting evidence.
+9. Invalid LLM JSON.
+10. Invalid verdict.
+11. Verification persistence.
+12. GET verification endpoint.
+13. POST verification endpoint.
+14. Re-verification behavior.
+15. Ownership authorization.
+16. Another user cannot verify another user's claim.
+17. No real Groq API in automated tests.
+18. Existing authentication tests.
+19. Existing debate tests.
+20. Module 8 claim/evidence tests.
+
+Mock the LLM provider.
+
+Do NOT make tests depend on the real Groq API.
+
+Do NOT make tests depend on the real Tavily API.
+
+==================================================
+STEP 19 — REAL MANUAL VERIFICATION
+==================================================
+
+After implementation:
+
+1. Start PostgreSQL and Redis.
+2. Run Alembic migrations.
+3. Start FastAPI.
+4. Start React.
+5. Login.
+6. Open an existing completed debate.
+7. Extract claims if required.
+8. Retrieve evidence for a factual claim.
+9. Click "Verify Claim".
+10. Verify the backend evaluates the stored evidence.
+11. Verify a structured verdict is returned.
+12. Verify the result is stored in PostgreSQL.
+13. Refresh the page.
+14. Verify the verification result remains.
+15. Verify evidence links remain visible.
+16. Verify no fabricated sources appear.
+17. Verify another user cannot access the result.
+18. Verify existing WebSocket/live debate functionality still works.
+
+Test at least these scenarios:
+
+Scenario A:
+Strong supporting evidence
+→ supported
+
+Scenario B:
+Strong contradictory evidence
+→ contradicted
+
+Scenario C:
+No/insufficient evidence
+→ insufficient_evidence
+
+If the real evidence available in the environment does not reliably demonstrate all three cases, do not fake the result. Use mocked tests for deterministic verification and report what was manually verified.
+
+==================================================
+STEP 20 — REGRESSION TEST
+==================================================
+
+Run the entire existing test suite.
+
+Existing functionality must continue working:
+
+- registration
+- login
+- /auth/me
+- JWT authentication
+- agent test
+- debate creation
+- agent selection
+- debate start
+- multi-agent orchestration
+- rounds
+- messages
+- transcript
+- WebSocket connection
+- live debate events
+- claim extraction
+- evidence retrieval
+- frontend routing
+
+Fix only regressions caused by Module 9.
+
+Do not rewrite unrelated functionality.
+
+==================================================
+STEP 21 — README
+==================================================
+
+Update README:
+
+MODULE 9 — Fact Verification + Claim Evaluation
+
+Document:
+
+- purpose
+- verification flow
+- verification statuses
+- API endpoints
+- database model
+- how evidence is used
+- how to test
+- important limitations
+
+Clearly state:
+
+"The verification system evaluates claims against retrieved evidence. It does not provide an absolute guarantee of truth."
+
+==================================================
+STEP 22 — ARCHITECTURE AFTER MODULE 9
+==================================================
+
+The resulting flow should be:
+
+Debate
+   ↓
+Debate Messages
+   ↓
+Claim Extraction
+   ↓
+Claims
+   ↓
+Evidence Retrieval
+   ↓
+Evidence
+   ↓
+Claim Verification
+   ↓
+Verification Result
+
+
+Do NOT add:
+
+Debate Winner
+Agent Score
+Fallacy Detection
+
+Those belong to later modules.
+
+==================================================
+STEP 23 — FINAL REPORT
+==================================================
+
+When finished, report:
+
+1. Files created
+2. Files modified
+3. Database model added
+4. Alembic migration
+5. Verification service
+6. API endpoints
+7. Frontend changes
+8. Tests added
+9. Tests passed
+10. Manual verification result
+11. Any limitations
+12. Any migration/setup commands required
+
+IMPORTANT:
+
+STOP after completing MODULE 9.
+
+Do NOT start Module 10.
+
+The next planned module is:
+
+MODULE 10 — Fallacy Detection + Debate Quality Analysis
+
+Do not implement anything from Module 10 now.

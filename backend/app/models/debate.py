@@ -1,10 +1,12 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
+from app.models.debate_agent import DebateAgent
 
 
 class Debate(BaseModel):
@@ -33,5 +35,53 @@ class Debate(BaseModel):
     )
     total_rounds: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     verify_evidence: Mapped[bool] = mapped_column(default=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user = relationship("User", back_populates="debates")
+    agents = relationship(
+        "Agent",
+        secondary="debate_agents",
+        back_populates="debates",
+        lazy="selectin",
+        order_by=DebateAgent.position,
+    )
+    rounds = relationship(
+        "DebateRound",
+        back_populates="debate",
+        cascade="all, delete-orphan",
+        order_by="DebateRound.round_number",
+        lazy="selectin",
+    )
+    messages = relationship(
+        "DebateMessage",
+        back_populates="debate",
+        cascade="all, delete-orphan",
+    )
+    claims = relationship(
+        "Claim",
+        back_populates="debate",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    fallacies = relationship(
+        "Fallacy",
+        back_populates="debate",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    argument_evaluations = relationship(
+        "ArgumentEvaluation",
+        back_populates="debate",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    @property
+    def round_count(self) -> int:
+        """Number of persisted rounds for this debate."""
+        return len(self.rounds)
