@@ -81,6 +81,32 @@ class DebateAgentResponse(BaseModel):
     description: str
 
 
+class RecommendAgentsRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=MAX_TOPIC_LENGTH)
+
+    @field_validator("topic")
+    @classmethod
+    def _strip_topic(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Topic cannot be empty or whitespace only")
+        return value
+
+
+class RecommendedAgent(BaseModel):
+    id: UUID
+    name: str
+    role: str
+    reason: str
+
+
+class RecommendAgentsResponse(BaseModel):
+    topic: str
+    selection_mode: ExpertSelectionMode = "auto"
+    selection_source: Literal["llm", "fallback"] = "llm"
+    agents: list[RecommendedAgent]
+
+
 class DebateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

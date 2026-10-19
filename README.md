@@ -115,6 +115,7 @@ python -m tests.test_verification  # Claim verification + evaluation (also re-ru
 python -m tests.test_fallacy       # Fallacy detection + argument quality evaluation
 python -m tests.test_judge         # Debate judge + scoring policy
 python -m tests.test_analytics     # Analytics dashboard + full regression of every earlier suite
+python -m tests.test_agent_selection  # Topic-aware automatic agent selection (LLM mocked)
 ```
 
 ## API Endpoints
@@ -1202,6 +1203,115 @@ like `btn-primary px-3` keep working:
 - `frontend/src/App.tsx`, `frontend/src/context/AuthContext.tsx`,
   `frontend/src/components/ProtectedRoute.tsx` — routes, session, guards
 
+## Topic-Aware Automatic Agent Selection
+
+### Purpose
+
+Auto selection no longer picks every active agent. The topic the user types
+is analyzed and a focused set of relevant experts is recommended, each with a
+short reason, before the debate is created.
+
+### How recommendations are generated
+
+1. `POST /api/v1/debates/recommend-agents` takes `{ "topic": "..." }`
+   (authenticated, topic validated up to 1000 characters).
+2. The backend loads the **active core agents from the database** (ids, roles,
+   names, descriptions) — nothing is hardcoded on the frontend.
+3. `AgentSelectionService` sends the topic plus that agent roster to the
+   existing Groq provider abstraction with a structured-JSON instruction and
+   temperature 0; the response must be
+   `{"agents": [{"id": "...", "role": "...", "reason": "..."}]}`.
+4. Every entry is validated against the roster: unknown/inactive roles are
+   dropped, ids must match the supplied agent, duplicates are removed, and
+   fewer than two usable entries counts as a failure. Only agents actually
+   stored in the database can ever be returned.
+
+Response:
+
+```json
+{
+  "topic": "...",
+  "selection_mode": "auto",
+  "selection_source": "llm",
+  "agents": [{ "id": "…uuid…", "name": "Doctor", "role": "doctor", "reason": "…" }]
+}
+```
+
+### How the fallback works
+
+If the provider fails, times out, or returns malformed/unusable JSON (or too
+few valid entries), the service uses a deterministic selector instead of
+failing and instead of "every agent":
+
+- each active agent is scored by keyword hits between the topic and a
+  per-role lexicon (e.g. `hospital/diagnos/patient` → doctor,
+  `inflation/tax/market` → economist);
+- agents with matches are returned, most matches first, each reason quoting
+  the matched keywords plus the agent's description;
+- if fewer than two matched, the selection is padded with balanced
+  perspectives (`analyst`, then `ethicist`);
+- if fewer than two active core agents exist at all, a clear 400 error is
+  returned — agents are never fabricated.
+
+`selection_source` in the response tells the client whether `"llm"` or
+`"fallback"` produced the result (the UI shows an offline-selector notice for
+fallback results).
+
+### Frontend behavior (New Debate page)
+
+- Manual mode: unchanged checkbox selection and validation.
+- Auto mode: recommendations load after a 600 ms topic debounce with a
+  loading state, per-agent reasons, recommended agents pre-checked (locked)
+  in the agent grid, and a Refresh action; switching to Manual pre-fills the
+  recommendation so it can be edited.
+- Guard rails: no API call per keystroke, at most one request in flight
+  (a topic change during a request is queued, and an older response never
+  overwrites a newer one), clearing the topic clears stale recommendations,
+  and submitting in Auto mode is blocked until fresh recommendations for the
+  current topic exist.
+- On creation, the recommended role ids are sent through the existing
+  `POST /api/v1/debates` flow; the backend re-validates them (still active,
+  core, known) so the stored `debate_agents` rows match exactly what was
+  shown — creation itself never calls the LLM.
+
+### How to test
+
+- Backend: `docker exec -e PYTHONPATH=/app agentsystem-backend-1 python -m tests.test_agent_selection`
+  — 16 tests (domain quality, auth, validation, dedupe, inactive/unknown
+  rejection, fallback on failure, creation persistence, manual mode, no-LLM
+  creation) with a mocked provider; no Groq key needed. It is also chained
+  from `python -m tests.test_analytics` (full regression).
+- Frontend: `npx tsc --noEmit && npm run build`; E2E
+  `agent_selection.e2e.js` (debounce, loading, error + retry, stale-response
+  and duplicate-request guards, manual prefill, live recommendation → debate
+  creation with matching stored agents).
+
+### Limitations
+
+- Selection quality depends on the LLM's judgment; **no formal accuracy
+  benchmark has been conducted**, only example-topic spot checks.
+- The fallback is a keyword heuristic, not a semantic model: unusual phrasing
+  may yield a generic (but still minimum, still relevant-by-description)
+  pair, and the UI marks fallback results explicitly.
+- Recommendations are per-request; there is no server-side caching, so
+  repeated refreshes call the provider again.
+- Agent capabilities come from the seeded `description` texts; adding new
+  roles works without algorithm changes, but their lexicon entries are what
+  drive the fallback.
+
+### Key files
+
+- `backend/app/services/agent_selection.py` — service, LLM validation,
+  deterministic fallback
+- `backend/app/api/debates.py` — `POST /api/v1/debates/recommend-agents`
+- `backend/app/schemas/debate.py` — `RecommendAgentsRequest` /
+  `RecommendAgentsResponse`
+- `backend/app/services/debate_service.py` — AUTO creation branch
+  (`select_auto_agents`)
+- `frontend/src/services/debates.ts` — `recommendAgents()` + types
+- `frontend/src/pages/DebateNew.tsx` — auto-mode UI, debounce/guards
+- `backend/tests/test_agent_selection.py` — backend suite
+
 ## CURRENTLY IMPLEMENTED
 
 - Project foundation
@@ -1267,6 +1377,9 @@ like `btn-primary px-3` keep working:
 - Auth hardening: refresh-safe session, expired/garbage token cleanup, no redirect loops
 - Debate detail integration fixes: merge (not replace) of WebSocket + HTTP data with stale-response guards, orphan-round rendering, start double-click guard, `aria-live` live regions
 - Accessibility and responsive pass: label/control pairing, focus rings, single `h1` heading hierarchy, 375px layout without horizontal overflow
+- Topic-aware automatic agent selection: `POST /api/v1/debates/recommend-agents` (LLM + validated against DB agents, deterministic keyword fallback), `AgentSelectionService`
+- New Debate Auto mode: debounced topic analysis, recommended agents with reasons, loading/error/refresh states, stale-response and duplicate-request guards, recommendation prefill for Manual mode
+- AUTO debate creation persists the validated recommendation (creation never calls the LLM); empty `agent_ids` fall back to the deterministic topic-aware selector instead of "every agent"
 
 ## NOT YET IMPLEMENTED
 

@@ -14,10 +14,18 @@ from app.schemas.debate import (
     DebateResponse,
     DebateRoundResponse,
     DebateRoundsResponse,
+    RecommendAgentsRequest,
+    RecommendAgentsResponse,
+    RecommendedAgent,
     TranscriptMessageResponse,
     TranscriptResponse,
 )
 from app.services import debate_service
+from app.services.agent_selection import (
+    AgentSelectionError,
+    AgentSelectionService,
+    InsufficientAgentsError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +56,51 @@ async def create_debate(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not create the debate",
         )
+
+
+@router.post("/recommend-agents", response_model=RecommendAgentsResponse)
+async def recommend_agents(
+    payload: RecommendAgentsRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recommend active core agents whose expertise fits the given topic.
+
+    The selection is produced by the shared LLM provider and validated
+    against the agents stored in the database; when the provider is
+    unavailable the deterministic topic/keyword fallback is used instead
+    (``selection_source`` tells the client which path ran).
+    """
+    try:
+        service = AgentSelectionService()
+        pairs, source = await service.recommend(db, payload.topic)
+    except InsufficientAgentsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        )
+    except AgentSelectionError as exc:
+        logger.warning("Agent recommendation failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not generate agent recommendations right now",
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Agent recommendation failed unexpectedly")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not generate agent recommendations",
+        )
+    return RecommendAgentsResponse(
+        topic=payload.topic,
+        selection_mode="auto",
+        selection_source=source,
+        agents=[
+            RecommendedAgent(id=agent.id, name=agent.name, role=agent.role, reason=reason)
+            for agent, reason in pairs
+        ],
+    )
 
 
 @router.get("", response_model=DebateListResponse)

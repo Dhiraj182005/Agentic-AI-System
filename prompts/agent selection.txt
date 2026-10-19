@@ -1,0 +1,240 @@
+# MAVES IMPROVEMENT — TOPIC-AWARE AUTOMATIC AGENT SELECTION
+
+I want to improve the existing agent selection feature in my MAVES (AI Debate Arena) project before starting the final module.
+
+## 1. Current Problem
+
+The application supports manual and automatic agent selection. Currently, automatic selection does not sufficiently consider the debate topic and may select every active agent.
+
+I want Auto Selection to intelligently choose the most relevant experts based on the topic entered by the user.
+
+Available core agents include:
+- Economist
+- Lawyer
+- Scientist
+- Doctor
+- Ethicist
+- Analyst
+
+The actual available agents must always come from the database, not a hardcoded frontend list.
+
+## 2. First Inspect the Existing Implementation
+
+Before making changes:
+
+1. Inspect the debate creation page and agent selection UI.
+2. Inspect the existing Agent model, agent registry, debate creation API, and agent-selection service.
+3. Identify how manual and automatic selection currently work.
+4. Inspect the existing LLM provider abstraction and Groq integration.
+5. Inspect database relationships and existing tests.
+
+Preserve existing behavior outside this feature. Do not rebuild the debate engine or authentication.
+
+## 3. Expected Frontend Behavior
+
+Update the existing debate creation page.
+
+### When Manual Selection Is Chosen
+- Display the available active agents.
+- Allow users to select agents manually.
+- Preserve existing selection validation and minimum-agent requirements.
+
+### When Auto Selection Is Chosen
+- Read the debate topic entered by the user.
+- Analyze the topic and identify relevant expert perspectives.
+- Automatically populate the selected-agent list with the recommended experts.
+- Display the selected agents, their roles, and a short explanation of why each was selected.
+- Show a loading indicator while selection is being generated.
+- Show an understandable error message if recommendation fails.
+
+Example:
+
+Topic: "Should AI be used to diagnose patients in hospitals?"
+
+Recommended agents:
+- **Doctor:** Clinical safety and patient care.
+- **Scientist:** Technical reliability and scientific evidence.
+- **Ethicist:** Patient consent, fairness, and ethical concerns.
+- **Lawyer:** Medical liability, privacy, and regulation.
+
+These are illustrative recommendations. The actual selection must depend on the topic and available agent capabilities.
+
+### Topic Changes
+If Auto mode is active and the topic changes:
+- Recalculate the recommendation after a short debounce, or provide a clear Refresh Recommendations action.
+- Do not make repeated API calls on every keystroke.
+- Clear stale recommendations when the topic is cleared.
+- Prevent an older asynchronous response from overwriting a newer recommendation.
+- Prevent duplicate requests while a recommendation is running.
+
+Allow the user to switch to Manual mode and customize the selection.
+
+## 4. Backend Recommendation Service
+
+Create or extend a dedicated service following the existing architecture. A suggested name is `AgentSelectionService`.
+
+The service must:
+
+1. Accept the debate topic.
+2. Fetch active agents and their descriptions from the database.
+3. Analyze the topic's domain, intent, and relevant perspectives.
+4. Select the most relevant available agents.
+5. Return selected agent IDs, names, roles, and selection explanations.
+6. Validate the result against the actual active agents in the database.
+7. Remove duplicate selections.
+8. Enforce the existing minimum of two agents.
+9. Handle unavailable or invalid recommendations safely.
+
+### Selection strategy
+
+Use the existing Groq provider abstraction for topic-aware selection if appropriate.
+
+Provide the selector with:
+- Debate topic
+- Available agent IDs
+- Agent names
+- Agent roles
+- Agent descriptions
+- Instructions to prioritize relevant expertise and diverse perspectives
+
+Require structured JSON output validated through the project's existing Pydantic conventions.
+
+The model must select only agents supplied by the backend. Never trust arbitrary agent IDs returned by the LLM.
+
+Do not call Groq directly from the service. Reuse the existing provider abstraction.
+
+### Selection quality rules
+
+- Select a focused set of relevant experts rather than all available agents by default.
+- Prefer diversity of relevant perspectives without including irrelevant agents.
+- Allow multiple experts when the topic genuinely spans several domains.
+- Ensure at least two agents are selected when at least two suitable active agents are available.
+- Do not force an arbitrary maximum unless the project already has a configured limit.
+- If the topic is broad or ambiguous, select a balanced group of relevant perspectives.
+- If the LLM fails or returns invalid data, use a deterministic fallback based on agent descriptions, domain keywords, and role relevance.
+- Do not silently fall back to selecting every agent.
+- If fewer than two suitable active agents exist, return a clear validation error instead of fabricating agents.
+
+Keep the selector modular so additional agent roles can be introduced later without rewriting the entire selection algorithm.
+
+## 5. API Design
+
+Inspect the existing API conventions and add a recommendation endpoint if equivalent functionality does not already exist.
+
+Suggested endpoint:
+
+`POST /api/v1/debates/recommend-agents`
+
+Example request:
+
+{
+  "topic": "Should AI be used to diagnose patients in hospitals?"
+}
+
+Example response:
+
+{
+  "topic": "Should AI be used to diagnose patients in hospitals?",
+  "selection_mode": "auto",
+  "agents": [
+    {
+      "id": "actual-agent-id",
+      "name": "Doctor",
+      "role": "Medical expert",
+      "reason": "Evaluates clinical safety and patient care."
+    },
+    {
+      "id": "actual-agent-id",
+      "name": "Scientist",
+      "role": "Scientific expert",
+      "reason": "Evaluates technical reliability and scientific evidence."
+    }
+  ]
+}
+
+This is an illustrative response schema. Use the project's actual ID type and existing schema conventions.
+
+Requirements:
+- Require authentication.
+- Validate the topic.
+- Use active database agents only.
+- Validate structured output.
+- Return clear errors for invalid topics, insufficient active agents, and provider failures.
+- Avoid exposing secrets or internal exception traces.
+
+## 6. Integrate with Debate Creation
+
+When the user submits a debate in Auto mode:
+
+- Persist the recommended agent IDs through the existing debate creation workflow.
+- Verify the selected agents are still active.
+- Ensure the saved debate-agent relationships match the recommendation displayed to the user.
+- Avoid running a second, different selection during debate creation unless necessary because the original recommendation is no longer valid.
+- Preserve the existing manual-selection workflow.
+- Preserve debate ownership checks and all existing validations.
+
+Do not create duplicate agents or new database tables unless there is a demonstrated requirement.
+
+## 7. Testing
+
+Add tests using the existing test framework.
+
+Cover:
+1. Medical topics selecting relevant available agents.
+2. Legal topics prioritizing relevant legal expertise.
+3. Economic topics prioritizing relevant economic expertise.
+4. Technology topics selecting relevant technical experts.
+5. Broad topics selecting a balanced set of experts.
+6. Only active agents being selected.
+7. Unknown or inactive agent IDs returned by an LLM being rejected.
+8. Duplicate selections being removed.
+9. Minimum-agent validation.
+10. Deterministic fallback when the LLM fails.
+11. Invalid structured LLM output.
+12. Authentication requirements.
+13. Debate creation persisting the recommended agents.
+14. Manual selection continuing to work.
+15. Frontend loading, error, topic-change, and stale-response behavior.
+
+Mock LLM responses in automated tests. Tests must not require a real Groq API key.
+
+Run the relevant tests and report actual results.
+
+## 8. Documentation
+
+Update the README with:
+- Topic-aware automatic agent selection
+- How recommendations are generated
+- How the fallback works
+- The recommendation endpoint
+- Known limitations
+
+Do not claim the selector has been benchmarked for accuracy unless a formal evaluation has been conducted.
+
+## 9. Strict Constraints
+
+- Implement this improvement only.
+- Do not begin Module 14.
+- Do not change the existing debate orchestration engine.
+- Do not replace the LLM provider abstraction.
+- Do not add another LLM provider.
+- Do not introduce LangGraph, Celery, Kafka, or another queue system.
+- Do not break manual agent selection.
+- Do not hardcode agent IDs or rely on frontend-only filtering.
+- Do not delete `.env.example` or expose API keys.
+- Do not fabricate recommendation results.
+- Avoid unrelated refactoring.
+
+## 10. Final Report
+
+After implementation, report:
+- Files created and modified
+- How topic-aware selection works
+- API endpoint added or reused
+- Example topics tested and their recommendations
+- Fallback behavior
+- Tests actually executed and results
+- Manual verification instructions
+- Remaining limitations
+
+STOP after this improvement. Do not start Module 14 yet.

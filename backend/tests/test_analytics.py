@@ -731,6 +731,10 @@ async def main():
         ("Module 3 (LLM provider + Base Agent)", "tests.test_llm"),
         ("Module 4 (core role-based agents)", "tests.test_agents"),
         ("Module 5 (debate creation + agent selection)", "tests.test_debates"),
+        (
+            "Topic-aware automatic agent selection",
+            "tests.test_agent_selection",
+        ),
         ("Module 6 (orchestration)", "tests.test_orchestration"),
         ("Module 11 (debate judge + overall scoring)", "tests.test_judge"),
     )

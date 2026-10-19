@@ -11,16 +11,19 @@ from app.models.debate_round import DebateRound
 from app.models.user import User
 from app.orchestration.debate_engine import DebateEngine
 from app.schemas.debate import MIN_AGENTS, DebateCreateRequest
-from app.services.agent_service import list_active_core_agents
+from app.services.agent_selection import AgentSelectionService, InsufficientAgentsError
 
 # The existing `debate_status_enum` defines the lifecycle states for a debate.
 # "pending" is the initial state of a freshly created debate: it is stored,
 # configured and waiting, but has not started executing yet.
 INITIAL_DEBATE_STATUS = "pending"
 
-# AUTO selection rule (deterministic, no LLM):
-# every active core agent participates in the debate.
-AUTO_SELECTION_RULE = "all_active_core_agents"
+# AUTO selection rule: use the agents from the topic-aware recommendation that
+# the client already received (validated against the database). When no
+# recommendation ids are supplied (direct API calls), fall back to the same
+# deterministic topic/keyword selector — still topic-aware, never "all agents"
+# and never an LLM call during creation.
+AUTO_SELECTION_RULE = "topic_aware_recommended_agents"
 
 
 class DebateServiceError(Exception):
@@ -74,14 +77,22 @@ async def resolve_selected_agents(
     return agents
 
 
-async def select_auto_agents(db: AsyncSession) -> list[Agent]:
-    """Deterministic AUTO selection: all active core agents."""
-    agents = await list_active_core_agents(db)
-    if len(agents) < MIN_AGENTS:
-        raise DebateValidationError(
-            "Not enough active core agents are available for automatic selection"
-        )
-    return agents
+async def select_auto_agents(
+    db: AsyncSession, topic: str, agent_roles: list[str]
+) -> list[Agent]:
+    """Resolve AUTO selection without running a second LLM round.
+
+    When the client supplies the recommended agent roles, they are validated
+    against the database and used as-is so the stored debate-agent
+    relationships match what the user was shown. Otherwise the deterministic
+    topic-aware fallback builds the selection from the topic.
+    """
+    if agent_roles:
+        return await resolve_selected_agents(db, agent_roles)
+    try:
+        return await AgentSelectionService().select_fallback(db, topic)
+    except InsufficientAgentsError as exc:
+        raise DebateValidationError(str(exc)) from exc
 
 
 async def _add_agent_links(db: AsyncSession, debate: Debate, agents: list[Agent]) -> None:
@@ -104,7 +115,7 @@ async def create_debate(
     if data.expert_selection_mode == "manual":
         agents = await resolve_selected_agents(db, data.agent_ids)
     else:
-        agents = await select_auto_agents(db)
+        agents = await select_auto_agents(db, data.topic, data.agent_ids)
 
     debate = Debate(
         user_id=user.id,

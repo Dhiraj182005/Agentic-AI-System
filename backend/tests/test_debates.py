@@ -298,16 +298,36 @@ async def test_manual_selection_stores_selected_agents(client):
     print("manual selection stores selected agents: PASSED")
 
 
-async def test_auto_mode_selects_all_active_core_agents(client):
+async def test_auto_mode_persists_recommended_agents(client):
+    """AUTO creation persists the recommended agent ids it was given."""
     token = await register_and_login(client, unique_email("auto"))
     resp = await create_debate(client, token, expert_selection_mode="auto")
     assert resp.status_code == 201, resp.text
     data = resp.json()
-    expected = await core_agent_roles()
-    assert len(expected) == 6
-    assert {a["role"] for a in data["agents"]} == expected
     assert data["expert_selection_mode"] == "auto"
-    print("auto mode selects all active core agents: PASSED")
+    # base_payload supplies the "recommendation" (economist + lawyer); the
+    # stored debate must match it exactly instead of widening to every agent.
+    assert {a["role"] for a in data["agents"]} == {"economist", "lawyer"}
+    print("auto mode persists the recommended agents: PASSED")
+
+
+async def test_auto_mode_without_recommendation_uses_topic_fallback(client):
+    """AUTO creation without recommendation ids selects by topic, not all agents."""
+    token = await register_and_login(client, unique_email("autofb"))
+    resp = await create_debate(
+        client,
+        token,
+        topic="Will inflation and tax policy hurt the housing market?",
+        expert_selection_mode="auto",
+        agent_ids=[],
+    )
+    assert resp.status_code == 201, resp.text
+    roles = {a["role"] for a in resp.json()["agents"]}
+    assert len(roles) >= 2, roles
+    assert "economist" in roles, roles
+    expected = await core_agent_roles()
+    assert roles != expected, "fallback must not select every active agent"
+    print("auto mode without recommendation uses topic-aware fallback: PASSED")
 
 
 # ---------------------------------------------------------------------------
@@ -541,7 +561,8 @@ async def main():
         await test_inactive_agent_rejected(client)
         await test_non_core_agent_rejected(client)
         await test_manual_selection_stores_selected_agents(client)
-        await test_auto_mode_selects_all_active_core_agents(client)
+        await test_auto_mode_persists_recommended_agents(client)
+        await test_auto_mode_without_recommendation_uses_topic_fallback(client)
         await test_debate_status_is_initial_not_started(client)
         await test_debate_creation_does_not_call_llm(client)
         await test_debate_agent_associations_are_stored(client)

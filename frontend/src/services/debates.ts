@@ -76,6 +76,20 @@ export const MIN_ROUNDS = 1
 export const MAX_ROUNDS = 10
 export const MAX_TOPIC_LENGTH = 1000
 
+export interface RecommendedAgent {
+  id: string
+  name: string
+  role: string
+  reason: string
+}
+
+export interface RecommendAgentsResponse {
+  topic: string
+  selection_mode: 'auto'
+  selection_source: 'llm' | 'fallback'
+  agents: RecommendedAgent[]
+}
+
 export const DEBATE_MODES: { value: 'balanced' | 'pro_con'; label: string }[] = [
   { value: 'balanced', label: 'Balanced' },
   { value: 'pro_con', label: 'Pro / Con' },
@@ -100,6 +114,14 @@ export function debateStatusLabel(status: string): string {
 
 export async function listCoreAgents(): Promise<CoreAgent[]> {
   return request<CoreAgent[]>('/api/v1/agents', {}, true)
+}
+
+export async function recommendAgents(topic: string): Promise<RecommendAgentsResponse> {
+  return request<RecommendAgentsResponse>(
+    '/api/v1/debates/recommend-agents',
+    { method: 'POST', body: JSON.stringify({ topic }) },
+    true,
+  )
 }
 
 export async function createDebate(input: CreateDebateInput): Promise<Debate> {
