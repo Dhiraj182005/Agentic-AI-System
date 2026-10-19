@@ -51,6 +51,19 @@ export class ApiClientError extends Error {
   }
 }
 
+/**
+ * User-facing message for a failed API call. Keeps every page on the same
+ * wording instead of re-implementing error unwrapping locally.
+ */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiClientError) return err.detail
+  if (err instanceof TypeError) {
+    // fetch network failure ("Failed to fetch") — never show raw text.
+    return 'Cannot reach the server. Check your connection and try again.'
+  }
+  return fallback
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},

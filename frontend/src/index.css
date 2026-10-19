@@ -1,3 +1,74 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply bg-gray-950 text-white;
+  }
+}
+
+/*
+ * Design tokens for the whole application. Pages and components use these
+ * classes instead of repeating long utility strings, so the visual system
+ * (buttons, inputs, cards, badges, alerts, headings) stays consistent.
+ */
+@layer components {
+  /* Buttons ------------------------------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-indigo-600 text-white hover:bg-indigo-700;
+  }
+  .btn-secondary {
+    @apply btn bg-gray-800 text-gray-200 hover:bg-gray-700;
+  }
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-gray-300 hover:bg-gray-800 hover:text-white;
+  }
+
+  /* Forms --------------------------------------------------------------- */
+  .input {
+    @apply w-full rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5 text-sm text-white placeholder-gray-400 focus:border-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .label {
+    @apply block text-sm font-medium text-gray-300 mb-1;
+  }
+  .field-hint {
+    @apply mt-1 text-xs text-gray-400;
+  }
+
+  /* Surfaces ------------------------------------------------------------ */
+  .card {
+    @apply rounded-2xl border border-gray-800 bg-gray-900 p-6;
+  }
+  .card-title {
+    @apply text-lg font-semibold text-white;
+  }
+  .section-title {
+    @apply text-base font-semibold text-white;
+  }
+  .page-title {
+    @apply text-2xl font-semibold text-white;
+  }
+
+  /* Badges -------------------------------------------------------------- */
+  .badge {
+    @apply inline-flex items-center rounded-full border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-gray-300;
+  }
+
+  /* Feedback ------------------------------------------------------------ */
+  .alert-error {
+    @apply rounded-lg border border-red-900/60 bg-red-950/50 px-4 py-3 text-sm text-red-300;
+  }
+  .alert-info {
+    @apply rounded-lg border border-indigo-900/60 bg-indigo-950/40 px-4 py-3 text-sm text-indigo-200;
+  }
+}

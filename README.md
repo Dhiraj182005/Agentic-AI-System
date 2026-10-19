@@ -112,6 +112,9 @@ python -m tests.test_orchestration  # Debate orchestration engine (also re-runs 
 python -m tests.test_websocket      # Live WebSocket streaming + event manager (also runs auth/orchestration paths)
 python -m tests.test_claims        # Claim extraction + evidence retrieval (also re-runs auth and debate tests)
 python -m tests.test_verification  # Claim verification + evaluation (also re-runs auth, debate and claim tests)
+python -m tests.test_fallacy       # Fallacy detection + argument quality evaluation
+python -m tests.test_judge         # Debate judge + scoring policy
+python -m tests.test_analytics     # Analytics dashboard + full regression of every earlier suite
 ```
 
 ## API Endpoints
@@ -139,6 +142,14 @@ python -m tests.test_verification  # Claim verification + evaluation (also re-ru
 | GET | `/api/v1/claims/{claim_id}/evidence` | Stored evidence for a claim, database read only (Bearer token, owner only) |
 | POST | `/api/v1/claims/{claim_id}/verify` | Evaluate a claim against its stored evidence (Bearer token, owner only) |
 | GET | `/api/v1/claims/{claim_id}/verification` | Latest stored verification result, database read only (Bearer token, owner only) |
+| POST | `/api/v1/debates/{debate_id}/judge` | Generate (or reuse) the stored debate judgment (Bearer token, owner only) |
+| GET | `/api/v1/debates/{debate_id}/judgment` | Read the stored judgment, database read only (Bearer token, owner only) |
+| GET | `/api/v1/analytics/summary` | Dashboard KPI counts + status distribution (Bearer token, owner only) |
+| GET | `/api/v1/analytics/debate-activity` | Debates created per UTC day over a range (Bearer token, owner only) |
+| GET | `/api/v1/analytics/claim-verification` | Stored verdict + confidence distributions (Bearer token, owner only) |
+| GET | `/api/v1/analytics/agent-performance` | Judgment score aggregates per agent (Bearer token, owner only) |
+| GET | `/api/v1/analytics/argument-quality` | Fallacy + evaluation aggregates (Bearer token, owner only) |
+| GET | `/api/v1/analytics/recent-debates` | Paginated recent debates with summary fields (Bearer token, owner only) |
 | GET | `/docs` | Swagger UI |
 
 ## LLM Provider and Base Agent
@@ -732,9 +743,11 @@ evaluate argument quality with structured 0-10 scores. Analysis judges the
 argument's reasoning only - never speakers, positions, or the truth of the
 topic.
 
-**Important:** A fallacy flag marks a flaw in reasoning, not a false claim.
-Quality scores measure how well an argument is constructed; they are
-analytical reference points, never a statement of absolute truth.
+**Important:** Fallacy detection does not determine whether a claim is true
+or false. Argument quality scores measure reasoning quality and do not
+represent absolute truth. A fallacy flag marks a flaw in reasoning, not a
+false claim; quality scores describe how well an argument is constructed and
+are analytical reference points only.
 
 ### Fallacy detection flow
 
@@ -859,6 +872,336 @@ python -m tests.test_fallacy   # all mocked (LLM mocked, includes regression sui
 - `frontend/src/services/analysis.ts` + `frontend/src/pages/DebateDetail.tsx` — UI
 - `backend/tests/test_fallacy.py` — Module 10 tests
 
+## Debate Judge + Overall Scoring
+
+### Purpose
+
+After a debate completes, the judge scores every participating agent (agents
+that actually posted messages) against a fixed seven-dimension rubric,
+computes an overall debate score, and decides the outcome. Scoring
+configuration lives in exactly one place: `backend/app/services/judge_rubric.py`.
+The LLM never chooses weights and never decides the winner; it only supplies
+per-dimension values and qualitative commentary, while all arithmetic runs in
+plain deterministic Python.
+
+### Scoring formula
+
+Seven dimensions per agent, each 0-10, weights sum to 1.0:
+
+| Dimension | Weight | Source |
+|-----------|--------|--------|
+| Logical Soundness | 0.20 | LLM (Module 10 evaluations supplied as context) |
+| Evidence Quality | 0.20 | LLM (only when retrieved evidence rows exist) |
+| Factual Support | 0.15 | Deterministic from stored claim verdicts |
+| Relevance | 0.15 | LLM (Module 10 evaluations supplied as context) |
+| Effectiveness | 0.10 | LLM (Module 10 evaluations supplied as context) |
+| Completeness | 0.10 | LLM |
+| Fallacy Risk | 0.10 | Deterministic from stored fallacy rows (penalty) |
+
+```
+Fallacy Quality = 10 - Fallacy Risk
+Agent Score = 0.20*Logical + 0.20*Evidence + 0.15*Factual + 0.15*Relevance
+            + 0.10*Effectiveness + 0.10*Completeness + 0.10*FallacyQuality
+```
+
+- Only the final displayed score is rounded (two decimals); intermediate
+  values stay full precision.
+- **Factual support (deterministic)**: over the agent's claim verdicts,
+  `supported` contributes +1, `contradicted` -1, `insufficient_evidence` 0
+  (neutral by design — insufficient evidence never counts for or against
+  truth). Score = `(ratio + 1) / 2 * 10`. No verification rows → dimension
+  unavailable.
+- **Fallacy risk (deterministic)**: `sum(severity_weight * confidence) /
+  message_count * 5` for the agent's fallacy rows (low=1, medium=2, high=3),
+  capped at 10; higher = riskier, inverted to quality before weighting. No
+  fallacy rows → dimension unavailable (reported as a limitation, never a
+  fabricated low-risk score).
+
+### Data-availability policy
+
+- A dimension whose underlying data does not exist is `null` (unavailable),
+  its weight is excluded, and the remaining weights are renormalized; every
+  unavailable dimension is reported as a judgment limitation.
+- `insufficient_evidence` verdicts stay neutral; `contradicted` verdicts
+  reduce factual support.
+- The evidence-quality dimension is only scored when retrieved evidence rows
+  exist for the debate.
+- Only agents that posted messages are scored (one card per participant).
+
+### Winner selection policy
+
+- Overall debate score = mean of the participants' final (rounded) scores.
+- `data_sufficient` requires at least one of: claim verdicts, fallacy
+  analyses, or argument evaluations for the debate.
+- Inconclusive: data not sufficient, or fewer than two participating agents
+  (no manufactured winner in either case).
+- Winner: top-two gap >= `JUDGE_MIN_SCORE_GAP` (Settings, default 0.5).
+- Otherwise: tie (no winner).
+
+### API endpoints
+
+- `POST /api/v1/debates/{debate_id}/judge` — validates (owner, completed,
+  has messages), asks the LLM once, computes the deterministic score and
+  persists one row per debate. Idempotent: an existing judgment is returned
+  without calling the LLM again. Errors: 400 (not completed / no messages),
+  404 (missing or foreign debate), 502 (LLM/provider failure or invalid LLM
+  output).
+- `GET /api/v1/debates/{debate_id}/judgment` — stored judgment, database
+  read only, never calls the LLM. 404 when no judgment exists.
+
+Example:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/debates/<debate_id>/judge \
+  -H "Authorization: Bearer <token>" -H "Content-Type: application/json"
+
+curl http://localhost:8000/api/v1/debates/<debate_id>/judgment \
+  -H "Authorization: Bearer <token>"
+```
+
+### Persistence
+
+Single `debate_judgments` row per debate (unique `debate_id`) holding
+`overall_score`, `outcome`, `winner_agent_id`, `summary`, the exact
+`scoring_rubric` snapshot used (weights, formula, min gap, bands, sources),
+per-agent dimension cards with unavailable markers, and limitations.
+
+### Frontend
+
+Judge section on the debate detail page (completed debates only): a Judge
+Debate button (re-entry safe while judging), overall score, outcome badge
+(winner / tie / inconclusive), winner name, summary, per-agent cards with all
+seven dimensions (Unavailable when `null`), strengths, weaknesses, qualitative
+assessments, per-agent limitations, judgment-level limitations, and a
+disclaimer that scores measure argument quality against the rubric and do not
+establish objective truth.
+
+### How to test
+
+- `docker exec -e PYTHONPATH=/app agentsystem-backend-1 python -m tests.test_judge`
+  covers the weight configuration, deterministic dimensions, rounding, the
+  outcome policy, parsing, all endpoint behaviors (auth, ownership, status,
+  no messages, data insufficiency, persistence/idempotency, LLM failures) and
+  runs every earlier suite as regression.
+
+### Limitations
+
+- The judge evaluates argument quality from stored debate data; it does not
+  establish objective truth, and a declared winner is a rubric
+  recommendation, not proof of factual correctness.
+- Missing analysis data shrinks the rubric via renormalization and is always
+  reported; inconclusive outcomes are preferred over manufactured winners.
+- LLM failures surface as 502 and leave no partial row; a stored judgment is
+  never recomputed (re-judging requires deleting the row).
+
+### Key files
+
+- `backend/app/models/judge.py` — `DebateJudgment` model
+- `backend/alembic/versions/007_debate_judgments.py` — migration
+- `backend/app/services/judge_rubric.py` — single weight configuration + deterministic scoring
+- `backend/app/services/debate_judge_service.py` — context loading, prompt, parsing, orchestration, persistence
+- `backend/app/schemas/judge.py`, `backend/app/api/judge.py` — response schema + endpoints
+- `frontend/src/services/judge.ts`, `frontend/src/pages/DebateDetail.tsx` — UI
+- `backend/tests/test_judge.py` — Module 11 tests + full regression
+
+## Analytics Dashboard
+
+### Purpose
+
+A results dashboard (`/dashboard`) that helps the authenticated user understand
+debate activity, compare participating agents, review factual-support verdicts,
+analyze argument quality and inspect final judgment results. Every figure is
+computed from the user's own stored records (debates, messages, claims,
+verifications, fallacies, evaluations, judgments). No hardcoded statistics,
+mock production data or invented accuracy metrics exist anywhere in the
+implementation.
+
+### Dashboard features
+
+- **Key performance indicators** — total / completed / running / failed debates,
+  total messages, extracted claims, claims with completed verification, debates
+  with a generated judgment, completion rate (only when total > 0).
+- **Debate activity** — debates created per UTC day as a dependency-free inline
+  SVG bar chart with an exact per-day count list; time range selector
+  (7 / 30 / 90 / 365 days, default 30).
+- **Debate status distribution** — labelled counts + bars for the modelled
+  lifecycle states only: pending, running, completed, failed, cancelled.
+- **Claim verification analytics** — verdict counts (supported / contradicted /
+  insufficient evidence) with share-of-verified percentages, confidence-level
+  distribution, and an explicit note that unverified claims are **not** counted
+  as insufficient evidence.
+- **Agent performance comparison** — per-agent average of stored Module 11
+  judgment scores (the same rubric, no second formula), judged appearances,
+  per-dimension averages and saved strengths/weaknesses. Agents without judged
+  appearances show as Unavailable, never as 0.
+- **Argument quality and fallacy analytics** — stored Module 10 fallacy type /
+  severity counts, evaluated vs not-yet-analyzed message counts and average
+  evaluation scores per dimension.
+- **Recent debates** — paginated table (topic link to the existing debate
+  detail page, creation date, status, agent/round/message counts, verification
+  and judgment flags); judged debates get a "View results" link.
+- **Debate results detail** — reuses the existing debate detail page's judge
+  section (Module 11) instead of duplicating it.
+
+### Analytics endpoints
+
+All routes require authentication and only aggregate the caller's own debates.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/analytics/summary` | KPI counts + status distribution |
+| GET | `/api/v1/analytics/debate-activity?days=30` | Debates per UTC day (`days` 1-365) |
+| GET | `/api/v1/analytics/claim-verification` | Verdict + confidence distributions |
+| GET | `/api/v1/analytics/agent-performance` | Judgment score aggregates per agent |
+| GET | `/api/v1/analytics/argument-quality` | Fallacy + evaluation aggregates |
+| GET | `/api/v1/analytics/recent-debates?page=1&page_size=10` | Paginated recent debates (`page_size` 1-50) |
+
+Example:
+
+```bash
+curl http://localhost:8000/api/v1/analytics/summary -H "Authorization: Bearer <token>"
+curl "http://localhost:8000/api/v1/analytics/debate-activity?days=30" -H "Authorization: Bearer <token>"
+```
+
+Invalid query values (`days=0`, `page=0`, `page_size=51`, ...) answer 422.
+
+### Metric definitions and counting rules
+
+| Metric | Source | Rule |
+|--------|--------|------|
+| Debate counts | `debates.status` | Persisted status only; a debate with messages is not automatically "completed". |
+| Completion rate | completed / total | `null` when the account has no debates. |
+| Message counts | `debates_messages` | One row per posted message. |
+| Extracted claims | `claims` | Rows in the claims table. |
+| Verified claims | `claim_verifications` | A claim is verified only when its verification row exists (1:1 unique constraint; joins cannot inflate). |
+| Debates judged | `debate_judgments` | One judgment row per debate; agent cards inside a judgment do not multiply the count. |
+| Activity buckets | `debates.created_at` | Grouped by UTC calendar day (`created_at AT TIME ZONE 'UTC'`); empty days are zero-filled. |
+| Agent performance | `debate_judgments.agent_scores` | Averages of stored Module 11 final scores; dimension averages skip unavailable (`null`) values. |
+| Fallacy statistics | `fallacies` | Stored detections only; "no fallacy" results are never persisted, so absence is never presented as clean. |
+| Not-yet-analyzed messages | `debates_messages` − distinct evaluated `message_id` | Falls back to `null` when the account has no messages. |
+
+### Authentication and ownership
+
+Every endpoint uses the existing JWT dependency and filters every query by the
+authenticated user's `user_id`; another user's debates, claims or judgments are
+never returned. No new database table was added and no migration was created —
+analytics are computed from existing persisted records with grouped SQL
+aggregation (no N+1 queries, no Redis caching).
+
+### Chart dependencies
+
+None. Charts are small inline SVG bar charts with per-bar `<title>` tooltips,
+plus visible exact counts and text summaries beside every visualization, so
+nothing depends on color alone. No chart library was installed.
+
+### How to test
+
+- `docker exec -e PYTHONPATH=/app agentsystem-backend-1 python -m tests.test_analytics`
+  covers summary counts, status distribution, activity grouping and range
+  filtering, claim-verdict counts (unverified excluded from verdicts), agent
+  score aggregation, missing judgment / fallacy / evaluation records, empty
+  accounts, pagination and query validation, authentication, ownership
+  isolation, duplicate-join inflation, and runs every earlier suite as
+  regression.
+- Frontend: `npx tsc --noEmit && npm run build` in `frontend/`.
+
+### Limitations
+
+- Stored claim-verification verdict distributions are **not** equivalent to
+  independently measured factual accuracy; they only reflect what the
+  evidence-check step stored for your claims.
+- Fallacy statistics cover stored detections only; a message without a row may
+  simply never have been analyzed, and the dashboard says so.
+- Agent performance is only as good as the judgments that exist; with zero
+  judgments the section reports an unavailable state instead of inventing
+  scores.
+- Activity grouping uses UTC days; accounts near midnight boundaries see UTC
+  dates, not local ones.
+
+### Key files
+
+- `backend/app/schemas/analytics.py` — response schemas + shared metric vocabularies
+- `backend/app/services/analytics_service.py` — aggregation queries and counting rules
+- `backend/app/api/analytics.py` — the six endpoints
+- `frontend/src/services/analytics.ts` — typed API client
+- `frontend/src/pages/Dashboard.tsx` — dashboard UI (loading / success / empty / partial / error states)
+- `backend/tests/test_analytics.py` — Module 12 tests + full regression
+
+## UI Design System and Navigation
+
+### Purpose
+
+Module 13 standardizes the entire frontend onto one shared design system and
+one consistent navigation shell, and hardens the page-to-API integration
+states (loading, empty, error, offline, unauthorized) so every page behaves
+predictably.
+
+### Design tokens
+
+Tokens live in `frontend/src/index.css` under `@layer components` (Tailwind
+v3.4.10, no extra dependencies). The utilities layer still wins, so variants
+like `btn-primary px-3` keep working:
+
+| Token class | Purpose |
+|-------------|---------|
+| `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-ghost` | All actions |
+| `.input`, `.label`, `.field-hint` | Forms (label + input always paired with `htmlFor`/`id`) |
+| `.card`, `.card-title`, `.section-title`, `.page-title` | Page and section structure |
+| `.badge` | Status pills (tone via extra Tailwind classes) |
+| `.alert-error`, `.alert-info` | Inline notices |
+
+### Shared components
+
+- `frontend/src/components/ui/AppHeader.tsx` — the single header used by every
+  authenticated page: brand link, primary nav (Home / My Debates / New
+  Debate / Agents / Dashboard) with `aria-current="page"` active states
+  (`end` matching so `/debates/new` does not light up "My Debates"), wrapped
+  on narrow viewports, user email, Logout.
+- `frontend/src/components/ui/PageShell.tsx` — consistent max-width layout
+  wrapper (`sm` = 3-column pages, `md` = dashboard width).
+- `frontend/src/components/ui/ErrorBanner.tsx` — `role="alert"` error block
+  with optional retry callback.
+- `frontend/src/components/ui/LoadingState.tsx` — `role="status"` spinner
+  used by page loads, `ProtectedRoute` and inline fetch states.
+
+### Integration and error handling
+
+- `apiErrorMessage(err, fallback)` in `frontend/src/services/api.ts` is the
+  single place that turns `ApiClientError` detail / network `TypeError` into
+  user-facing text; all pages use it (no per-page copies, no swallowed
+  failures). Expected 404s (missing judgment, verification, evidence) render
+  explicit "nothing yet" states rather than errors.
+- Auth: 401 responses clear the token and broadcast an auth-change event;
+  `ProtectedRoute` keeps the session across refreshes and redirects
+  unauthenticated or invalid/expired tokens to `/login` without loops.
+- Debate detail: live WebSocket transcript merges (never replaces) persisted
+  HTTP data with sequence guards against stale async responses; round
+  messages without a stored round still render (orphan rounds); start button
+  disables while starting (double-click guard); `aria-live` on live panels;
+  external links restricted to http/https.
+- Responsive: 375px viewport verified with no horizontal overflow on Home,
+  Dashboard, New Debate and Debate list; heading hierarchy fixed (one
+  `h1` per page, no skipped levels); visible focus rings on all controls.
+
+### How to test
+
+- `npx tsc --noEmit && npm run build` in `frontend/`.
+- End-to-end (playwright-core + Edge, frontend on `:5173`):
+  `dashboard.e2e.js`, `judge.e2e.js`, `analysis.e2e.js` and
+  `integration.e2e.js` (register → create → execute → claims/evidence/
+  verify → analyze → judge → analytics → refresh/ownership/logout/invalid
+  token → 375px layout) under `C:\Users\ASUS\AppData\Local\Temp\opencode\e2e`.
+- Backend regression (unchanged by Module 13):
+  `python -m tests.test_analytics`.
+
+### Key files
+
+- `frontend/src/index.css` — design tokens
+- `frontend/src/components/ui/{AppHeader,PageShell,ErrorBanner,LoadingState}.tsx`
+- `frontend/src/services/api.ts` — API client + shared error mapping
+- `frontend/src/App.tsx`, `frontend/src/context/AuthContext.tsx`,
+  `frontend/src/components/ProtectedRoute.tsx` — routes, session, guards
+
 ## CURRENTLY IMPLEMENTED
 
 - Project foundation
@@ -910,15 +1253,24 @@ python -m tests.test_fallacy   # all mocked (LLM mocked, includes regression sui
 - Per-message fallacy results with "No clear fallacy detected" handling (`fallacies` table)
 - Argument quality evaluation (logical soundness / evidence / relevance / effectiveness / overall, 0-10)
 - Analyze Argument + Evaluate Argument buttons and result blocks on the debate detail page
+- Debate judge: deterministic 7-dimension rubric with documented weights and renormalization for unavailable data
+- Winner / tie / inconclusive outcome policy with configurable minimum score gap (`JUDGE_MIN_SCORE_GAP`)
+- Judge endpoint + stored judgment read endpoint (one judgment per debate, idempotent)
+- Judge UI section on the debate detail page (scores, outcome, per-agent cards, limitations)
+- Analytics dashboard page (`/dashboard`) with KPIs, activity chart, status distribution and recent debates
+- Analytics API: summary, debate activity, claim verification, agent performance, argument quality, recent debates (owner-scoped SQL aggregation)
+- Claim-verification analytics that keep unverified claims separate from insufficient-evidence verdicts
+- Agent performance comparison from stored Module 11 judgments (unavailable, never zero, for agents without appearances)
+- Shared UI design system: tokens (buttons, inputs, cards, badges, alerts) in `index.css` + shared `AppHeader` / `PageShell` / `ErrorBanner` / `LoadingState` components
+- Unified navigation with active states (`aria-current`), responsive wrapping header and Logout on every authenticated page
+- Consistent client error handling: shared `apiErrorMessage`, `role="alert"` error banners, expected-404 empty states, no swallowed failures
+- Auth hardening: refresh-safe session, expired/garbage token cleanup, no redirect loops
+- Debate detail integration fixes: merge (not replace) of WebSocket + HTTP data with stale-response guards, orphan-round rendering, start double-click guard, `aria-live` live regions
+- Accessibility and responsive pass: label/control pairing, focus rings, single `h1` heading hierarchy, 375px layout without horizontal overflow
 
 ## NOT YET IMPLEMENTED
 
 - LangGraph workflow
-- Judge AI
-- Winner selection
 - Confidence scoring
-- Debate results
-- Results dashboard
-- Analytics dashboard
 - PDF reports
 - Custom agents

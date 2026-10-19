@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { register as apiRegister } from '../services/auth'
-import { ApiClientError } from '../services/api'
+import { apiErrorMessage } from '../services/api'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -27,74 +27,79 @@ export default function Register() {
     setSubmitting(true)
     try {
       await apiRegister(email, password)
-      navigate('/login', { replace: true })
+      navigate('/login', { replace: true, state: { registered: true } })
     } catch (err) {
-      setError(
-        err instanceof ApiClientError
-          ? err.detail
-          : 'Unable to register. Please try again.',
-      )
+      setError(apiErrorMessage(err, 'Unable to register. Please try again.'))
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      <div className="max-w-md w-full bg-gray-900 rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4 py-10">
+      <div className="max-w-md w-full rounded-2xl border border-gray-800 bg-gray-900 p-8 shadow-xl">
         <h1 className="text-2xl font-bold mb-6 text-center">AI Debate Arena</h1>
         <h2 className="text-lg font-semibold mb-4 text-center text-gray-300">
           Create Account
         </h2>
 
         {error && (
-          <p className="mb-4 text-center text-red-400 text-sm bg-red-900/30 rounded-lg px-4 py-2">
+          <p role="alert" className="alert-error mb-4 text-center">
             {error}
           </p>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Email</label>
+            <label htmlFor="register-email" className="label">
+              Email
+            </label>
             <input
+              id="register-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label htmlFor="register-password" className="label">
               Password
             </label>
             <input
+              id="register-password"
               type="password"
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              aria-describedby="register-password-hint"
+              className="input"
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p id="register-password-hint" className="field-hint">
               At least 8 characters
             </p>
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">
+            <label htmlFor="register-confirm-password" className="label">
               Confirm Password
             </label>
             <input
+              id="register-confirm-password"
               type="password"
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
           </div>
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg py-2 font-semibold"
+            className="btn-primary w-full"
           >
             {submitting ? 'Creating account...' : 'Register'}
           </button>

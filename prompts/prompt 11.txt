@@ -1,0 +1,377 @@
+# MODULE 11 — DEBATE JUDGE + OVERALL SCORING SYSTEM
+
+You are working on my existing project **MAVES (AI Debate Arena) — Multi-Agent LLM for Argument Verification**.
+
+## 1. Existing Technology Stack
+
+### Backend
+- Python
+- FastAPI
+- Async SQLAlchemy
+- Alembic migrations
+- PostgreSQL
+- Redis
+- JWT authentication
+- Groq API through an existing LLM provider abstraction
+
+### Frontend
+- React
+- Vite
+- TypeScript
+- Tailwind CSS
+
+### Existing Project Capabilities
+The project already contains:
+- User registration, login, and JWT authentication
+- Debate creation and agent selection
+- Role-based AI agents
+- Multi-round debate orchestration
+- Debate messages and transcript persistence
+- WebSocket-based live debate updates
+- Claim extraction
+- Tavily-based evidence retrieval
+- Evidence-based claim verification
+- Module 10: fallacy detection and argument quality evaluation, if already implemented
+
+## 2. Your First Task: Inspect the Existing Codebase
+
+Before writing any code:
+
+1. Inspect the existing backend and frontend folder structures.
+2. Read the existing Debate, Agent, User, DebateMessage, Claim, ClaimVerification, Fallacy, and ArgumentEvaluation models, using the actual names present in the repository.
+3. Inspect the existing debate orchestration engine, LLM provider abstraction, authentication dependencies, API routes, schemas, services, and frontend debate details/transcript pages.
+4. Inspect the Alembic migration history and existing test structure.
+5. Verify the actual implementation status of Module 10. Do not assume its models or endpoints exist merely because they were planned.
+6. Identify reusable services and relationships before making changes.
+
+Follow the existing architecture and naming conventions. Make the smallest changes necessary.
+
+**Do not recreate existing modules, duplicate models, or break previously working features.**
+
+## 3. Objective
+
+Implement an AI Debate Judge that evaluates a completed debate and produces:
+
+- An overall debate quality score
+- Individual performance scores for participating agents
+- A transparent scoring breakdown
+- Strengths and weaknesses of each participant
+- Evidence quality and factual support assessments
+- A final judge's summary
+- A winner recommendation when sufficient information exists
+- A tie or inconclusive outcome when a winner cannot be justified
+
+The judge must evaluate argument quality and evidence, not simply reward confident language or the agent that produces the longest response.
+
+## 4. Database Design
+
+Inspect existing models before adding a new model.
+
+If no equivalent model exists, create a `DebateJudgment` model containing fields appropriate to the existing project's conventions:
+
+- `id`
+- `debate_id`
+- `status`
+- `overall_score`
+- `winner_agent_id` — nullable
+- `outcome` — winner, tie, or inconclusive
+- `summary`
+- `scoring_rubric` — JSON/JSONB where supported
+- `agent_scores` — JSON/JSONB where supported, or normalized related records if that fits the existing architecture better
+- `limitations` — nullable
+- `created_at`
+- `updated_at`
+
+Add appropriate foreign keys, constraints, indexes, and relationships.
+
+Use the existing database types and ID conventions. Do not introduce a different UUID or integer strategy.
+
+Prevent accidental duplicate judgments for the same debate unless the existing architecture explicitly supports judgment history or versioning. If history is supported, define how the latest judgment is retrieved.
+
+Create an Alembic migration only if a schema change is necessary. Do not edit old migrations to accommodate the new module.
+
+## 5. Scoring Rubric
+
+Implement a documented, deterministic scoring formula.
+
+Evaluate each participating agent on these seven dimensions, each scored from 0 to 10:
+
+1. **Logical Soundness** — consistency, reasoning quality, and whether conclusions follow from arguments.
+2. **Evidence Quality** — relevance, credibility, and usefulness of cited or retrieved evidence.
+3. **Factual Support** — how well factual claims are supported by stored claim-verification results.
+4. **Relevance** — how directly the arguments address the debate topic and opposing arguments.
+5. **Effectiveness** — clarity, persuasiveness, and quality of responses and rebuttals.
+6. **Completeness** — whether the agent addresses the important aspects of the topic and responds adequately to counterarguments.
+7. **Fallacy Risk** — the degree to which detected logical fallacies weaken the arguments. A higher risk must reduce the final score.
+
+### Default weights
+
+Use these initial weights, and keep them in one clearly documented configuration:
+
+- Logical Soundness: 20%
+- Evidence Quality: 20%
+- Factual Support: 15%
+- Relevance: 15%
+- Effectiveness: 10%
+- Completeness: 10%
+- Fallacy Risk: 10%
+
+The first six dimensions contribute positively. Fallacy Risk is a penalty dimension, so transform it into a positive quality score:
+
+`Fallacy Quality = 10 - Fallacy Risk`
+
+Then calculate:
+
+`Agent Score = 0.20 × Logical Soundness + 0.20 × Evidence Quality + 0.15 × Factual Support + 0.15 × Relevance + 0.10 × Effectiveness + 0.10 × Completeness + 0.10 × Fallacy Quality`
+
+The result must be between 0 and 10.
+
+Round only the final displayed score to two decimal places. Keep sufficient precision internally.
+
+Do not allow the LLM to invent or independently modify the formula or weights.
+
+If the existing Module 10 evaluation uses different criteria, document the mapping explicitly. Do not silently reinterpret existing fields.
+
+## 6. Use Existing Evidence and Evaluation Data
+
+The judge must reuse existing database records whenever available.
+
+For each agent, collect:
+- Debate messages and round order
+- Extracted claims associated with its messages
+- Stored claim-verification verdicts and confidence levels
+- Retrieved evidence and source metadata
+- Existing argument evaluations
+- Existing fallacy detections
+
+Follow the actual foreign-key relationships in the codebase.
+
+### Factual support rules
+
+- Use stored verification results and evidence, not unsupported model memory.
+- Supported claims should contribute positively to factual support.
+- Contradicted claims should reduce factual support.
+- Insufficient-evidence claims must not be treated as true or false.
+- Missing verification records must not be silently treated as supported.
+- If evidence is unavailable, mark the relevant assessment as limited or unavailable.
+
+### Fallacy rules
+
+- Use stored fallacy-analysis results when available.
+- Do not assume every detected fallacy makes the entire argument false.
+- Consider severity, confidence, frequency, and context.
+- Avoid counting the same fallacy repeatedly if the database contains duplicate detections.
+- If fallacy analysis has not been run, report it as unavailable rather than assigning an unjustified low fallacy risk.
+
+### Missing data
+
+Do not fabricate evidence, citations, claims, verification results, fallacy results, or argument evaluations.
+
+If the available data is insufficient for a reliable judgment, return a transparent limitation and an appropriate inconclusive outcome rather than manufacturing a winner.
+
+## 7. Judge Service
+
+Create a dedicated service, following the existing service architecture. A suggested name is `DebateJudgeService`.
+
+The service should:
+
+1. Verify that the debate exists and is completed.
+2. Load the debate topic, participating agents, rounds, and messages.
+3. Load relevant claims, evidence, verification results, fallacy results, and argument evaluations.
+4. Validate the completeness and consistency of the available data.
+5. Prepare a structured evaluation input.
+6. Use the existing LLM provider abstraction to generate qualitative assessments and a concise judge's summary.
+7. Validate LLM output using existing Pydantic conventions.
+8. Calculate final numerical scores in deterministic Python code using the configured weights.
+9. Determine the outcome using the documented winner-selection policy.
+10. Persist the judgment and return the stored result.
+
+Do not call Groq directly from the service. Use the existing provider abstraction and existing timeout/error-handling conventions.
+
+Keep database access, LLM assessment, score calculation, and persistence clearly separated.
+
+### LLM output requirements
+
+Require structured output containing:
+- Per-agent qualitative assessments
+- Strengths
+- Weaknesses
+- Reasoning quality explanation
+- Evidence quality explanation
+- Factual support explanation
+- Completeness assessment
+- Fallacy impact assessment
+- Confidence or reliability assessment
+- Overall comparative summary
+- Limitations
+
+Validate every score and field. If the LLM output is invalid, handle the error safely. Never store malformed or unvalidated output as a successful judgment.
+
+The LLM may provide qualitative assessments and rubric dimension values, but the application must calculate the final score using the fixed formula.
+
+## 8. Winner Selection Policy
+
+Implement a transparent winner-selection policy.
+
+- Only compare agents that actually participated in the debate.
+- Use the deterministic final agent score.
+- Require a configurable minimum score difference before declaring one agent the winner.
+- If the top scores are too close, return a tie.
+- If essential evaluation data is missing or unreliable, return inconclusive.
+- Do not select a winner solely because an agent has more messages or uses more persuasive language.
+- Do not present the highest-scoring agent as objectively correct or factually infallible.
+
+Document the minimum score difference and make it configurable.
+
+A winner is a recommendation based on the selected rubric, not a guarantee of truth.
+
+## 9. API Endpoints
+
+Follow the existing route and schema conventions. Add endpoints equivalent to:
+
+### Generate a judgment
+
+`POST /api/v1/debates/{debate_id}/judge`
+
+- Requires authentication.
+- Verify debate ownership using existing authorization dependencies.
+- Require the debate to be completed.
+- Prevent unintended duplicate processing.
+- Return the persisted judgment.
+- Return clear, consistent errors for missing debates, unauthorized access, incomplete debates, and unavailable evaluation data.
+
+### Retrieve the latest judgment
+
+`GET /api/v1/debates/{debate_id}/judgment`
+
+- Requires authentication.
+- Verify debate ownership.
+- Return the stored judgment and per-agent scores.
+- Return an appropriate not-found response if judgment has not been generated.
+
+Do not expose one user's debate results to another user.
+
+If the project already has an API pattern for analysis jobs, reuse it rather than introducing a new job framework.
+
+## 10. Frontend Integration
+
+Inspect the existing debate details and transcript pages before changing them.
+
+Add a **Judge Debate** action that:
+- Is available only when the debate is completed.
+- Displays loading and error states.
+- Prevents repeated clicks while a judgment request is running.
+- Calls the new API through the existing centralized API client.
+
+Display a judgment section containing:
+
+### Overall result
+- Overall debate score out of 10
+- Outcome: winner, tie, or inconclusive
+- Winner's name when a winner exists
+- Judge's summary
+
+### Agent comparison
+- Agent name and role
+- Final score out of 10
+- Seven rubric dimensions
+- Strengths and weaknesses
+- Evidence and factual support assessment
+- Fallacy risk assessment
+- Data limitations
+
+Use a readable table or responsive cards consistent with the existing Tailwind design.
+
+Show a clear message when:
+- Judgment has not been generated.
+- Required evaluations are missing.
+- The result is inconclusive.
+- Judgment generation fails.
+
+Never display a fabricated winner, missing score, or unsupported fact.
+
+Keep existing debate creation, live transcript, claims, evidence, and verification UI working.
+
+## 11. Testing Requirements
+
+Add tests using the existing testing framework and fixtures.
+
+Cover:
+
+1. Score calculation and all configured weights.
+2. Score bounds and rounding.
+3. Fallacy-risk inversion.
+4. Winner selection when one agent clearly leads.
+5. Tie when scores are sufficiently close.
+6. Inconclusive outcome when essential data is missing.
+7. Insufficient-evidence claims not being treated as supported.
+8. Contradicted claims reducing factual support.
+9. Missing fallacy analysis being represented as unavailable.
+10. Only participating agents being scored.
+11. Judgment persistence and retrieval.
+12. Authentication and ownership enforcement.
+13. Rejection of incomplete debates.
+14. Duplicate request handling.
+15. Invalid LLM output and provider failures.
+16. Regression tests for existing debate, claim, evidence, verification, and Module 10 functionality.
+
+Mock LLM calls in unit tests. Tests must not require a real Groq API key or external Tavily request.
+
+Run the relevant backend tests and frontend checks. Fix regressions introduced by this module.
+
+Do not claim tests passed unless you actually ran them and inspected their results.
+
+## 12. Documentation
+
+Update the README and relevant API documentation with:
+- The judge's purpose
+- Scoring criteria and exact weights
+- The scoring formula
+- Winner/tie/inconclusive policy
+- API endpoint examples
+- Required prior analysis data
+- Known limitations
+- Test commands
+
+Explicitly state that the judge evaluates argument quality based on the available rubric and stored evidence; it does not establish objective truth.
+
+## 13. Strict Constraints
+
+- Do not redesign the project.
+- Do not replace the existing LLM provider abstraction.
+- Do not add another LLM provider.
+- Do not introduce LangGraph, Celery, Kafka, RabbitMQ, or a new queue system.
+- Do not add Google Fact Check API integration in this module.
+- Do not rebuild claim extraction, evidence retrieval, verification, or fallacy detection.
+- Do not modify authentication behavior unnecessarily.
+- Do not remove or rewrite existing migrations.
+- Do not add fake data or hardcoded demonstration judgments.
+- Do not store API keys in frontend code.
+- Do not claim functionality is complete when it is not.
+- Preserve the existing async SQLAlchemy and Alembic architecture.
+- Keep the implementation modular and maintainable.
+
+## 14. Final Verification and Report
+
+After implementation:
+
+1. Run the relevant tests.
+2. Check Alembic migration status.
+3. Confirm the application starts successfully.
+4. Verify the new endpoints through the project's existing testing approach.
+5. Check the frontend build/type-check if scripts are available.
+6. Review the git diff for unrelated changes.
+7. Confirm prior modules still work.
+
+Provide a final report containing:
+- Files created
+- Files modified
+- Migration details
+- Endpoints added
+- Scoring formula and weights implemented
+- Tests actually executed and their results
+- Manual verification steps
+- Known limitations
+- Any work that remains incomplete
+
+**STOP after Module 11. Do not begin Module 12 or implement advanced analytics in this task.**

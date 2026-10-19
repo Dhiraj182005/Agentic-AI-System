@@ -6,6 +6,7 @@ import AgentTest from './pages/AgentTest'
 import DebateList from './pages/DebateList'
 import DebateNew from './pages/DebateNew'
 import DebateDetail from './pages/DebateDetail'
+import Dashboard from './pages/Dashboard'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -50,6 +51,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DebateDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
           </ProtectedRoute>
         }
       />

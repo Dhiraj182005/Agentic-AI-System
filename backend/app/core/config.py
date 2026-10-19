@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     SERPAPI_API_KEY: str = ""
     GOOGLE_FACT_CHECK_API_KEY: str = ""
 
+    # Minimum gap between the top two final agent scores required to declare
+    # a winner; closer scores produce a tie (Module 11 judge).
+    JUDGE_MIN_SCORE_GAP: float = 0.5
+
     FRONTEND_URL: str = "http://localhost:5173"
 
     JWT_SECRET_KEY: str = "change-me-in-development"

@@ -9,6 +9,7 @@ from app.models.claim_verification import ClaimVerification
 from app.models.evidence import Evidence
 from app.models.fallacy import Fallacy
 from app.models.argument_evaluation import ArgumentEvaluation
+from app.models.judge import DebateJudgment
 
 __all__ = [
     "User",
@@ -22,4 +23,5 @@ __all__ = [
     "Evidence",
     "Fallacy",
     "ArgumentEvaluation",
+    "DebateJudgment",
 ]

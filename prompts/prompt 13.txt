@@ -1,0 +1,406 @@
+# MODULE 13 — FINAL UI/UX + COMPLETE SYSTEM INTEGRATION
+
+You are working on my existing project **MAVES (AI Debate Arena) — Multi-Agent LLM for Argument Verification**.
+
+Your task is to implement **MODULE 13 ONLY: Final UI/UX Improvements and Complete System Integration**.
+
+The goal is to make the existing application cohesive, responsive, reliable, and ready for a project demonstration.
+
+## 1. Existing Technology Stack
+
+### Backend
+- Python
+- FastAPI
+- Async SQLAlchemy
+- Alembic
+- PostgreSQL
+- Redis
+- JWT authentication
+- Groq API through the existing LLM provider abstraction
+- Tavily evidence retrieval
+- WebSockets
+
+### Frontend
+- React
+- Vite
+- TypeScript
+- Tailwind CSS
+
+## 2. Mandatory First Step — Inspect the Entire Project
+
+Before making changes:
+
+1. Inspect the backend and frontend folder structures.
+2. Read the README and existing project documentation.
+3. Inspect all existing routes, models, schemas, services, migrations, and tests.
+4. Inspect the current login, registration, dashboard, debate creation, debate details, transcript, claims, evidence, verification, fallacy analysis, judgment, and analytics interfaces.
+5. Determine which of Modules 10, 11, and 12 are actually implemented and functional.
+6. Inspect the API client, authentication state, protected routes, WebSocket connection logic, error handling, and loading states.
+7. Identify duplicated components, inconsistent styling, broken navigation, and integration problems.
+
+Do not assume any feature exists because it was previously planned.
+
+**Reuse existing code and fix integration issues before adding anything new. Do not rebuild working modules.**
+
+## 3. Main Objective
+
+Deliver a consistent end-to-end user experience:
+
+1. A user registers or logs in.
+2. The user creates a debate and selects AI agents.
+3. The user starts the debate.
+4. Agent messages appear in the live transcript.
+5. The user reviews claims extracted from the debate.
+6. The user retrieves supporting evidence and verifies claims.
+7. The user analyzes logical fallacies and argument quality when those features are available.
+8. The user generates and views the debate judgment when supported.
+9. The user views analytics based on stored data.
+10. The user can return to past debates and inspect their results.
+
+All implemented steps must use the real backend and persisted data. Do not simulate completed features with hardcoded responses.
+
+## 4. Establish a Consistent Design System
+
+Review the current design and create or refine reusable design tokens and components.
+
+Standardize:
+- Primary and secondary colors
+- Page backgrounds and surface colors
+- Typography and heading hierarchy
+- Spacing and responsive layout
+- Border radius and borders
+- Buttons and interactive states
+- Form fields and validation messages
+- Status indicators
+- Cards and tables
+- Loading indicators
+- Empty states
+- Error messages
+- Confirmation dialogs where necessary
+
+The interface should look professional and suitable for an AI research application.
+
+Use the existing Tailwind configuration and installed libraries. Avoid adding dependencies unless there is a clear need.
+
+Do not redesign the entire application unnecessarily. Preserve useful existing layouts and improve consistency.
+
+## 5. Global Navigation and Layout
+
+Review and improve the existing navigation.
+
+Ensure the application has clear access to the available sections, such as:
+- Dashboard
+- New Debate
+- My Debates
+- Analytics
+- User profile or account controls, if already supported
+
+Requirements:
+- Use consistent navigation across authenticated pages.
+- Clearly indicate the active page.
+- Ensure logout works correctly.
+- Prevent unauthenticated users from accessing protected pages.
+- Prevent users from viewing another user's debates or results.
+- Ensure navigation works after refreshing the browser.
+- Handle invalid or expired authentication tokens gracefully.
+- Do not redirect users repeatedly between login and protected pages.
+
+Reuse the existing authentication architecture.
+
+## 6. Authentication and API Integration
+
+Inspect the frontend API client and authentication flow.
+
+Verify:
+- Registration and login
+- JWT persistence using the existing strategy
+- Authorization headers
+- Protected route behavior
+- Logout and invalid-token handling
+- Consistent handling of 401, 403, 404, 422, and 500 responses
+- API base URL configuration
+- Environment variable usage
+
+Requirements:
+- Do not expose backend secrets or LLM API keys in frontend code.
+- Do not hardcode production credentials.
+- Do not introduce a second API client unnecessarily.
+- Avoid silently swallowing API errors.
+- Show user-friendly messages without exposing stack traces or secrets.
+- Preserve backend ownership checks; frontend hiding alone is not security.
+
+Do not change authentication behavior unless necessary to fix a verified issue.
+
+## 7. Debate Creation and Execution Workflow
+
+Review the complete debate workflow.
+
+### Debate creation
+- Validate the debate topic.
+- Validate agent selection.
+- Respect the minimum required number of agents enforced by the backend.
+- Display available agents and their roles.
+- Show loading and API error states.
+- Prevent duplicate submissions caused by repeated clicks.
+- Navigate to the created debate's detail page on success.
+
+### Debate execution
+- Ensure the start button follows the actual debate status.
+- Prevent unintended repeated starts.
+- Display the current status clearly.
+- Handle backend errors without losing existing debate data.
+- Preserve the existing debate orchestration behavior.
+
+Do not introduce a new debate engine or change its execution semantics.
+
+## 8. Live Debate Transcript and WebSockets
+
+Verify the existing WebSocket integration.
+
+Ensure:
+- The frontend connects to the correct debate-specific WebSocket endpoint.
+- Authentication follows the existing backend contract.
+- Events are processed according to their actual event types.
+- Agent messages appear in the correct order.
+- Duplicate messages are not rendered multiple times.
+- Connection and reconnection states are visible.
+- A disconnected socket does not falsely imply that the debate has stopped.
+- The transcript can recover through the existing HTTP API after reconnection.
+- Completed and failed debates display their final states correctly.
+
+Do not add token streaming or replace the existing WebSocket architecture.
+
+Do not stop or restart backend debate execution merely because the frontend disconnects.
+
+## 9. Claims, Evidence, Verification, and Argument Analysis
+
+Integrate these features into the debate details experience without duplicating their existing implementations.
+
+### Claims and evidence
+- Display extracted claims with their actual text and type.
+- Allow evidence retrieval when supported.
+- Display retrieved sources and available source metadata.
+- Clearly distinguish claims from evidence.
+
+### Claim verification
+Display:
+- Supported
+- Contradicted
+- Insufficient evidence
+- Confidence level
+- Verification explanation
+- Available evidence summary
+
+Do not label insufficient evidence as false or true.
+
+### Fallacy detection and argument evaluation
+If Module 10 is implemented:
+- Display analyzed messages and their stored fallacy results.
+- Show fallacy type, severity, confidence, and explanation when available.
+- Display stored argument quality scores and their explanations.
+- Distinguish messages that have not been analyzed from messages with no detected fallacy.
+
+If Module 10 is incomplete, show a clear unavailable or incomplete state. Do not invent results.
+
+Reuse existing APIs, schemas, and frontend services.
+
+## 10. Debate Judgment and Results
+
+If Module 11 is implemented, integrate its existing judgment experience.
+
+Display:
+- Overall debate score
+- Winner, tie, or inconclusive outcome
+- Agent comparison
+- Scoring rubric breakdown
+- Judge's summary
+- Strengths and weaknesses
+- Evidence and factual support assessments
+- Limitations of the evaluation
+
+Use the actual scoring formula implemented by the backend.
+
+Do not calculate a competing frontend score or fabricate a winner.
+
+If a judgment has not been generated, show the correct action or empty state.
+
+If Module 11 is incomplete, do not simulate a completed judgment.
+
+## 11. Analytics Integration
+
+If Module 12 is implemented, ensure the analytics dashboard is integrated with the main navigation and displays real API data.
+
+Verify:
+- KPI cards
+- Debate activity charts
+- Debate status distribution
+- Claim verification statistics
+- Agent performance comparisons
+- Argument quality statistics
+- Recent debates
+
+Handle empty datasets and unavailable analysis data gracefully.
+
+Do not add fake statistics or call verification verdict distributions factual accuracy.
+
+Do not rebuild analytics endpoints that already exist.
+
+## 12. Responsive Design and Accessibility
+
+Check the application at desktop, tablet, and mobile widths.
+
+Ensure:
+- Navigation works on smaller screens.
+- Cards and tables remain readable.
+- Forms fit within the viewport.
+- Long debate messages wrap correctly.
+- Dialogs and dropdowns remain usable.
+- Buttons have visible hover, focus, disabled, and loading states.
+- Interactive controls can be operated with a keyboard.
+- Inputs have accessible labels.
+- Text and controls have adequate contrast.
+- Status is not communicated through color alone.
+- Charts have titles and textual summaries.
+
+Use semantic HTML and appropriate ARIA attributes when necessary. Follow established React accessibility practices.
+
+## 13. Error Handling and User Feedback
+
+Standardize feedback throughout the application.
+
+Implement or improve:
+- Inline form validation
+- Loading indicators
+- Success messages
+- API error messages
+- Retry actions where appropriate
+- Empty states
+- Disabled states for unavailable actions
+- Connection status indicators
+- Confirmation before destructive actions, if destructive actions exist
+
+Avoid showing raw exception text to users.
+
+Do not silently replace failed requests with placeholder data.
+
+Do not add destructive functionality that the project does not currently support.
+
+## 14. Code Quality and Integration
+
+Review the existing frontend and backend integration.
+
+Requirements:
+- Reuse existing components and services.
+- Remove duplicate logic only when safe.
+- Use consistent TypeScript types for API responses.
+- Handle optional or missing backend fields safely.
+- Avoid unnecessary `any` types.
+- Avoid unnecessary global state.
+- Clean up WebSocket listeners and subscriptions correctly.
+- Prevent stale asynchronous responses from overwriting newer UI state.
+- Keep database access in backend services and repositories according to existing conventions.
+- Preserve async SQLAlchemy patterns.
+- Do not place business logic directly in React presentation components.
+- Avoid unrelated backend refactoring.
+
+Do not rewrite stable modules just to match a new preferred architecture.
+
+## 15. Testing and Regression Checks
+
+Use the existing test framework and project scripts.
+
+Test the following end-to-end flows where possible:
+
+1. Register and log in.
+2. Open protected pages.
+3. Create a debate.
+4. Select agents.
+5. Start a debate.
+6. Receive and display agent messages.
+7. Recover the transcript through HTTP.
+8. Extract claims.
+9. Retrieve evidence.
+10. Verify a claim.
+11. Run fallacy and argument analysis when implemented.
+12. Generate and retrieve a judgment when implemented.
+13. View analytics when implemented.
+14. Log out and verify protected access is denied.
+15. Confirm one user cannot access another user's debates or analytics.
+
+Also test:
+- Empty states
+- Expired tokens
+- Network failures
+- Invalid inputs
+- Duplicate button clicks
+- WebSocket disconnections
+- Browser refresh on protected routes
+- Missing optional analysis data
+
+Run existing backend tests, frontend tests, and build/type checks when available.
+
+Do not claim tests passed unless they were actually executed.
+
+## 16. Documentation
+
+Update the README only where necessary to reflect the actual integrated application.
+
+Document:
+- Current working features
+- Local setup instructions
+- Required environment variables
+- How to start the backend, frontend, PostgreSQL, and Redis
+- Available user workflows
+- Known limitations
+- Commands used for tests and builds
+
+Preserve `.env.example`.
+
+Never include real API keys, JWT secrets, passwords, or other credentials in documentation or source control.
+
+## 17. Strict Constraints
+
+- Implement Module 13 only.
+- Do not start Module 14.
+- Do not introduce new major features.
+- Do not add Google Fact Check API integration.
+- Do not add another LLM provider.
+- Do not introduce LangGraph, Celery, Kafka, RabbitMQ, or another queue system.
+- Do not replace PostgreSQL or Redis.
+- Do not change the existing scoring formula without an explicit requirement.
+- Do not fabricate test results or demo data.
+- Do not break existing API contracts unnecessarily.
+- Do not delete `.env.example`.
+- Do not modify old migrations.
+- Do not expose secrets in frontend code.
+- Do not claim planned modules are complete when they are not.
+- Keep the scope limited to UI/UX refinement, integration, and fixing verified issues.
+
+## 18. Final Verification and Report
+
+After implementation:
+
+1. Run the available backend tests.
+2. Run frontend tests and build/type checks.
+3. Verify the application starts successfully.
+4. Test the primary workflow from login to debate results.
+5. Verify the UI at mobile and desktop widths.
+6. Verify that all displayed analytics and judgments use real persisted data.
+7. Check authentication and ownership behavior.
+8. Check that existing claims, evidence, verification, and WebSocket functionality still works.
+9. Review the final git diff for unrelated changes.
+10. Identify any remaining broken or incomplete features.
+
+Provide a final report containing:
+- Files created
+- Files modified
+- UI components improved
+- Integration issues fixed
+- Features verified
+- Tests actually executed and their results
+- Build/type-check results
+- Manual verification steps
+- Known limitations
+- Work remaining for Module 14
+
+**STOP after Module 13. Do not implement Module 14 in this task.**

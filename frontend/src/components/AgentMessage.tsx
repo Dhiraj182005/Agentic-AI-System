@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { AgentTestResponse } from '../services/agents'
@@ -6,6 +6,13 @@ import { accentFor } from './agentAccents'
 
 function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false)
+  const timerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    }
+  }, [])
 
   async function handleCopy() {
     try {
@@ -14,14 +21,15 @@ function CopyButton({ value }: { value: string }) {
       return
     }
     setCopied(true)
-    window.setTimeout(() => setCopied(false), 2000)
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    timerRef.current = window.setTimeout(() => setCopied(false), 2000)
   }
 
   return (
     <button
       type="button"
       onClick={handleCopy}
-      className="rounded-md border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+      className="rounded-md border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:border-gray-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
     >
       {copied ? 'Copied' : 'Copy'}
     </button>
@@ -54,7 +62,12 @@ export default function AgentMessage({ result }: { result: AgentTestResponse }) 
         </div>
       </header>
 
-      <div className="max-h-[32rem] overflow-y-auto px-5 py-4">
+      <div
+        className="max-h-[32rem] overflow-y-auto px-5 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+        tabIndex={0}
+        role="region"
+        aria-label={`Response from ${result.role}`}
+      >
         <div className="agent-prose animate-fade-in text-sm leading-relaxed text-gray-300 [animation-delay:80ms]">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}

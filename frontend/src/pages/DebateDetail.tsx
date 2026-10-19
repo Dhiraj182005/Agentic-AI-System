@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { ApiClientError } from '../services/api'
+import { ApiClientError, apiErrorMessage } from '../services/api'
 import {
   DEBATE_MODES,
   debateStatusLabel,
@@ -45,51 +45,113 @@ import {
   type ArgumentEvaluation,
   type Fallacy,
 } from '../services/analysis'
+import {
+  DIMENSION_KEYS,
+  DIMENSION_LABELS,
+  dimensionDisplay,
+  generateJudgment,
+  getJudgment,
+  overallDisplay,
+  outcomeLabel,
+  type Judgment,
+} from '../services/judge'
+import PageShell from '../components/ui/PageShell'
+import ErrorBanner from '../components/ui/ErrorBanner'
+import LoadingState from '../components/ui/LoadingState'
+
+const BADGE_BASE =
+  'rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide'
 
 function verdictBadgeClass(verdict: string): string {
-  const base =
-    'rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide'
   if (verdict === 'supported')
-    return `${base} border-emerald-700 bg-emerald-950/70 text-emerald-300`
+    return `${BADGE_BASE} border-emerald-700 bg-emerald-950/70 text-emerald-300`
   if (verdict === 'contradicted')
-    return `${base} border-red-700 bg-red-950/70 text-red-300`
-  return `${base} border-slate-600 bg-slate-800 text-slate-300`
+    return `${BADGE_BASE} border-red-700 bg-red-950/70 text-red-300`
+  return `${BADGE_BASE} border-slate-600 bg-slate-800 text-slate-300`
 }
 
 function fallacyBadgeClass(fallacyType: string): string {
-  const base =
-    'rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide'
   if (fallacyType === 'no_fallacy')
-    return `${base} border-emerald-700 bg-emerald-950/70 text-emerald-300`
-  return `${base} border-amber-700 bg-amber-950/70 text-amber-300`
+    return `${BADGE_BASE} border-emerald-700 bg-emerald-950/70 text-emerald-300`
+  return `${BADGE_BASE} border-amber-700 bg-amber-950/70 text-amber-300`
 }
 
 function severityBadgeClass(severity: string): string {
-  const base =
-    'rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide'
   if (severity === 'high')
-    return `${base} border-red-700 bg-red-950/70 text-red-300`
+    return `${BADGE_BASE} border-red-700 bg-red-950/70 text-red-300`
   if (severity === 'medium')
-    return `${base} border-amber-700 bg-amber-950/70 text-amber-300`
-  return `${base} border-slate-600 bg-slate-800 text-slate-300`
+    return `${BADGE_BASE} border-amber-700 bg-amber-950/70 text-amber-300`
+  return `${BADGE_BASE} border-slate-600 bg-slate-800 text-slate-300`
 }
 
-function apiErrorMessage(err: unknown, fallback: string): string {
-  return err instanceof ApiClientError
-    ? err.detail
-    : err instanceof Error
-      ? err.message
-      : fallback
+function judgeOutcomeBadgeClass(outcome: string): string {
+  if (outcome === 'winner')
+    return `${BADGE_BASE} border-emerald-700 bg-emerald-950/70 text-emerald-300`
+  if (outcome === 'tie')
+    return `${BADGE_BASE} border-sky-700 bg-sky-950/70 text-sky-300`
+  return `${BADGE_BASE} border-amber-700 bg-amber-950/70 text-amber-300`
+}
+
+function roundStatusLabel(status: string): string {
+  switch (status) {
+    case 'pending':
+      return 'Waiting to start'
+    case 'running':
+      return 'Running'
+    case 'completed':
+      return 'Completed'
+    default:
+      return status
+  }
+}
+
+// Only http(s) links are opened; anything else renders as plain text so a
+// malformed source URL can never run script in the page.
+function safeExternalUrl(url: string): string | null {
+  return /^https?:\/\//i.test(url) ? url : null
+}
+
+function mergeMessages(
+  fetched: TranscriptMessage[],
+  current: TranscriptMessage[],
+): TranscriptMessage[] {
+  const byId = new Map<string, TranscriptMessage>()
+  for (const message of fetched) byId.set(message.id, message)
+  for (const message of current) {
+    if (!byId.has(message.id)) byId.set(message.id, message)
+  }
+  return [...byId.values()].sort(
+    (a, b) =>
+      a.round_number - b.round_number ||
+      a.turn_number - b.turn_number ||
+      a.created_at.localeCompare(b.created_at),
+  )
+}
+
+function mergeRounds(
+  fetched: DebateRound[],
+  current: DebateRound[],
+): DebateRound[] {
+  const byNumber = new Map<number, DebateRound>()
+  for (const round of fetched) byNumber.set(round.round_number, round)
+  for (const round of current) {
+    if (!byNumber.has(round.round_number)) byNumber.set(round.round_number, round)
+  }
+  return [...byNumber.values()].sort(
+    (a, b) => a.round_number - b.round_number,
+  )
 }
 
 export default function DebateDetail() {
   const { debateId } = useParams<{ debateId: string }>()
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
 
   const [debate, setDebate] = useState<Debate | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [errorTitle, setErrorTitle] = useState<string | null>(null)
+  const [transcriptNotice, setTranscriptNotice] = useState<string | null>(null)
+  const [storedNotice, setStoredNotice] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [rounds, setRounds] = useState<DebateRound[]>([])
   const [messages, setMessages] = useState<TranscriptMessage[]>([])
@@ -138,32 +200,55 @@ export default function DebateDetail() {
     Record<string, string | null>
   >({})
 
+  const [judgment, setJudgment] = useState<Judgment | null>(null)
+  const [judging, setJudging] = useState(false)
+  const [judgeError, setJudgeError] = useState<string | null>(null)
+  const [judgmentNotice, setJudgmentNotice] = useState<string | null>(null)
+
   const wsClientRef = useRef<DebateWebSocketClient | null>(null)
   const wsDebateIdRef = useRef<string | null>(null)
+  const execLoadSeqRef = useRef(0)
 
+  // Re-read rounds + transcript over HTTP and MERGE them into the current
+  // state: a live WebSocket message that arrived while the request was in
+  // flight is kept (a blind replace would erase it), and a sequence guard
+  // drops responses that belong to a superseded load.
   const loadExecutionState = useCallback(async (id: string) => {
+    const seq = ++execLoadSeqRef.current
     try {
       const [roundsResponse, transcriptResponse] = await Promise.all([
         getRounds(id),
         getTranscript(id),
       ])
-      setRounds(roundsResponse.rounds)
-      setMessages(transcriptResponse.messages)
+      if (seq !== execLoadSeqRef.current) return
+      setRounds((prev) => mergeRounds(roundsResponse.rounds, prev))
+      setMessages((prev) => mergeMessages(transcriptResponse.messages, prev))
+      setTranscriptNotice(null)
     } catch {
-      // The transcript is optional: the debate details remain visible.
+      if (seq !== execLoadSeqRef.current) return
+      // Surface the failure instead of silently pretending the transcript is
+      // empty; existing content stays on screen.
+      setTranscriptNotice(
+        'The transcript could not be refreshed from the server. The data below may be out of date.',
+      )
     }
   }, [])
 
   // Read stored evidence for the given claims (database only, no provider
-  // calls). Claims without stored evidence stay undefined so the UI can tell
-  // "never retrieved" apart from "retrieved, nothing found".
+  // calls). A 404 or empty response means "nothing stored" and is not an
+  // error; any other failure is surfaced instead of being hidden as
+  // "never analyzed".
   const loadStoredEvidence = useCallback(async (claimList: Claim[]) => {
+    let failed = false
     const entries = await Promise.all(
       claimList.map(async (claim) => {
         try {
           const response = await getEvidence(claim.id)
           return [claim.id, response.evidence] as const
-        } catch {
+        } catch (err) {
+          if (!(err instanceof ApiClientError && err.status === 404)) {
+            failed = true
+          }
           return [claim.id, undefined] as const
         }
       }),
@@ -173,17 +258,27 @@ export default function DebateDetail() {
       if (items && items.length > 0) record[claimId] = items
     }
     setEvidenceByClaim((prev) => ({ ...prev, ...record }))
+    if (failed) {
+      setStoredNotice(
+        'Some stored evidence could not be loaded, so those claims may appear unanalyzed.',
+      )
+    }
   }, [])
 
   // Read stored verification results for the given claims (database only,
-  // never the LLM). Claims without a stored result stay undefined.
+  // never the LLM). A 404 means "not verified yet" (expected); anything else
+  // is a real failure and is surfaced to the user.
   const loadStoredVerifications = useCallback(async (claimList: Claim[]) => {
+    let failed = false
     const entries = await Promise.all(
       claimList.map(async (claim) => {
         try {
           const verification = await getVerification(claim.id)
           return [claim.id, verification] as const
-        } catch {
+        } catch (err) {
+          if (!(err instanceof ApiClientError && err.status === 404)) {
+            failed = true
+          }
           return [claim.id, undefined] as const
         }
       }),
@@ -193,13 +288,22 @@ export default function DebateDetail() {
       if (verification) record[claimId] = verification
     }
     setVerificationByClaim((prev) => ({ ...prev, ...record }))
+    if (failed) {
+      setStoredNotice(
+        'Some stored verification results could not be loaded, so those claims may appear unverified.',
+      )
+    }
   }, [])
+
+  const claimsLoadSeqRef = useRef(0)
 
   const loadClaims = useCallback(
     async (id: string) => {
+      const seq = ++claimsLoadSeqRef.current
       setClaimsLoading(true)
       try {
         const response = await getClaims(id)
+        if (seq !== claimsLoadSeqRef.current) return
         setClaims(response.claims)
         setClaimsNotice(null)
         await Promise.all([
@@ -207,15 +311,10 @@ export default function DebateDetail() {
           loadStoredVerifications(response.claims),
         ])
       } catch (err) {
-        setClaimsNotice(
-          err instanceof ApiClientError
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : 'Unable to load claims.',
-        )
+        if (seq !== claimsLoadSeqRef.current) return
+        setClaimsNotice(apiErrorMessage(err, 'Unable to load claims.'))
       } finally {
-        setClaimsLoading(false)
+        if (seq === claimsLoadSeqRef.current) setClaimsLoading(false)
       }
     },
     [loadStoredEvidence, loadStoredVerifications],
@@ -228,33 +327,107 @@ export default function DebateDetail() {
   }, [debateId, debate?.status, loadClaims])
 
   // Read stored fallacy analyses and argument evaluations (database only,
-  // never the LLM) so results survive a page refresh.
+  // never the LLM) so results survive a page refresh. Failures are surfaced:
+  // an unreachable backend must not look like "nothing was analyzed".
+  const analysisLoadSeqRef = useRef(0)
+
   const loadAnalysis = useCallback(async (id: string) => {
-    try {
-      const [fallacies, evaluations] = await Promise.all([
-        getDebateFallacies(id).catch(() => null),
-        getDebateEvaluations(id).catch(() => null),
-      ])
-      if (fallacies) {
-        const record: Record<string, Fallacy> = {}
-        for (const item of fallacies.fallacies) record[item.message_id] = item
-        setFallacyByMessage(record)
-      }
-      if (evaluations) {
-        const record: Record<string, ArgumentEvaluation> = {}
-        for (const item of evaluations.evaluations)
-          record[item.message_id] = item
-        setEvaluationByMessage(record)
-      }
-    } catch {
-      // Argument analysis is optional: the transcript stays usable without it.
+    const seq = ++analysisLoadSeqRef.current
+    let failed = false
+    const [fallacies, evaluations] = await Promise.all([
+      getDebateFallacies(id).catch((err: unknown) => {
+        if (!(err instanceof ApiClientError && err.status === 404)) failed = true
+        return null
+      }),
+      getDebateEvaluations(id).catch((err: unknown) => {
+        if (!(err instanceof ApiClientError && err.status === 404)) failed = true
+        return null
+      }),
+    ])
+    if (seq !== analysisLoadSeqRef.current) return
+    if (fallacies) {
+      const record: Record<string, Fallacy> = {}
+      for (const item of fallacies.fallacies) record[item.message_id] = item
+      setFallacyByMessage(record)
+    }
+    if (evaluations) {
+      const record: Record<string, ArgumentEvaluation> = {}
+      for (const item of evaluations.evaluations)
+        record[item.message_id] = item
+      setEvaluationByMessage(record)
+    }
+    if (failed) {
+      setStoredNotice(
+        'Stored fallacy and evaluation results could not be loaded, so messages may appear unanalyzed.',
+      )
     }
   }, [])
 
   useEffect(() => {
     if (!debateId || !debate || debate.status === 'pending') return
-    void loadAnalysis(debateId)
+    let cancelled = false
+    const run = async () => {
+      try {
+        await loadAnalysis(debateId)
+      } catch {
+        if (!cancelled) {
+          setStoredNotice(
+            'Stored argument analysis could not be loaded, so messages may appear unanalyzed.',
+          )
+        }
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
   }, [debateId, debate?.status, loadAnalysis])
+
+  // Read the stored judgment for finished debates (database only, never the
+  // LLM). 404 means "not judged yet" and is an expected state.
+  useEffect(() => {
+    if (!debateId || !debate || debate.status !== 'completed') return
+    let cancelled = false
+    const load = async () => {
+      try {
+        const stored = await getJudgment(debateId)
+        if (!cancelled) {
+          setJudgment(stored)
+          setJudgmentNotice(null)
+        }
+      } catch (err) {
+        if (cancelled) return
+        if (err instanceof ApiClientError && err.status === 404) {
+          setJudgmentNotice(
+            'This debate has not been judged yet. Select Judge debate to create a judgment.',
+          )
+        } else {
+          setJudgmentNotice('The stored judgment could not be loaded.')
+        }
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [debateId, debate?.status])
+
+  const handleJudge = async () => {
+    if (!debateId || judging) return
+    setJudging(true)
+    setJudgeError(null)
+    try {
+      const result = await generateJudgment(debateId)
+      setJudgment(result)
+      setJudgmentNotice(null)
+    } catch (err) {
+      setJudgeError(
+        apiErrorMessage(err, 'Judging failed. Please try again later.'),
+      )
+    } finally {
+      setJudging(false)
+    }
+  }
 
   // Re-read the authoritative state over HTTP when the live channel reports a
   // terminal event, so the final view is exactly what the backend persisted.
@@ -266,7 +439,9 @@ export default function DebateDetail() {
         setDebate(refreshed)
         await loadExecutionState(refreshed.id)
       } catch {
-        // Keep the live view if the refresh also fails.
+        setTranscriptNotice(
+          'The finished debate could not be refreshed from the server. The live view is kept as-is.',
+        )
       }
     },
     [loadExecutionState],
@@ -440,34 +615,61 @@ export default function DebateDetail() {
   useEffect(() => {
     if (!debateId) {
       setError('Missing debate id.')
+      setErrorTitle('Debate not available')
       setLoading(false)
       return
     }
+    // A different debate id in the same mounted component must not keep the
+    // previous debate's messages, claims or analysis on screen.
+    execLoadSeqRef.current += 1
+    claimsLoadSeqRef.current += 1
+    analysisLoadSeqRef.current += 1
+    setDebate(null)
+    setRounds([])
+    setMessages([])
+    setClaims([])
+    setEvidenceByClaim({})
+    setVerificationByClaim({})
+    setFallacyByMessage({})
+    setEvaluationByMessage({})
+    setJudgment(null)
+    setJudgmentNotice(null)
+    setError(null)
+    setErrorTitle(null)
+    setTranscriptNotice(null)
+    setStoredNotice(null)
+    setLiveNotice(null)
+    setLoading(true)
     // Always fetch the current state from the backend on load, so a refresh
     // while a debate is running shows the real status.
+    let cancelled = false
     getDebate(debateId)
       .then(async (loaded) => {
+        if (cancelled) return
         setDebate(loaded)
         if (loaded.status !== 'pending') {
           await loadExecutionState(loaded.id)
         }
       })
-      .catch((err) =>
-        setError(
-          err instanceof ApiClientError
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : 'Unable to load this debate.',
-        ),
-      )
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (cancelled) return
+        setError(apiErrorMessage(err, 'Unable to load this debate.'))
+        setErrorTitle('Debate not available')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [debateId, loadExecutionState])
 
   async function handleStart() {
     if (!debate || starting) return
     setStarting(true)
     setError(null)
+    setErrorTitle(null)
+    setTranscriptNotice(null)
     setLiveNotice(null)
     // Open the live channel first: the start request blocks until the debate
     // finishes, and every event must be captured from the very beginning.
@@ -479,28 +681,20 @@ export default function DebateDetail() {
       setDebate(finished)
       await loadExecutionState(finished.id)
     } catch (err) {
-      setError(
-        err instanceof ApiClientError
-          ? err.detail
-          : err instanceof Error
-            ? err.message
-            : 'The debate could not be started.',
-      )
+      setError(apiErrorMessage(err, 'The debate could not be started.'))
+      setErrorTitle('Debate could not be started')
       try {
         const refreshed = await getDebate(debate.id)
         setDebate(refreshed)
         await loadExecutionState(refreshed.id)
       } catch {
-        // Keep the current view if the refresh also fails.
+        setTranscriptNotice(
+          'The debate state could not be reloaded after the failed start.',
+        )
       }
     } finally {
       setStarting(false)
     }
-  }
-
-  function handleLogout() {
-    logout()
-    navigate('/login', { replace: true })
   }
 
   async function handleExtractClaims() {
@@ -515,13 +709,7 @@ export default function DebateDetail() {
         loadStoredVerifications(response.claims),
       ])
     } catch (err) {
-      setClaimsNotice(
-        err instanceof ApiClientError
-          ? err.detail
-          : err instanceof Error
-            ? err.message
-            : 'Claim extraction failed.',
-      )
+      setClaimsNotice(apiErrorMessage(err, 'Claim extraction failed.'))
     } finally {
       setExtracting(false)
     }
@@ -537,12 +725,7 @@ export default function DebateDetail() {
     } catch (err) {
       setEvidenceErrors((prev) => ({
         ...prev,
-        [claimId]:
-          err instanceof ApiClientError
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : 'Evidence retrieval failed.',
+        [claimId]: apiErrorMessage(err, 'Evidence retrieval failed.'),
       }))
     } finally {
       setEvidenceLoading((prev) => ({ ...prev, [claimId]: false }))
@@ -559,12 +742,7 @@ export default function DebateDetail() {
     } catch (err) {
       setVerificationErrors((prev) => ({
         ...prev,
-        [claimId]:
-          err instanceof ApiClientError
-            ? err.detail
-            : err instanceof Error
-              ? err.message
-              : 'Claim verification failed.',
+        [claimId]: apiErrorMessage(err, 'Claim verification failed.'),
       }))
     } finally {
       setVerifying((prev) => ({ ...prev, [claimId]: false }))
@@ -612,56 +790,71 @@ export default function DebateDetail() {
   const messagesForRound = (roundNumber: number) =>
     messages.filter((message) => message.round_number === roundNumber)
 
+  // Rounds are rendered from the server's round list, plus any round number
+  // that only appears in the transcript: dropping those would hide messages.
+  const serverRoundNumbers = new Set(rounds.map((round) => round.round_number))
+  const messageOnlyRounds = [
+    ...new Set(
+      messages
+        .map((message) => message.round_number)
+        .filter((number) => !serverRoundNumbers.has(number)),
+    ),
+  ].sort((a, b) => a - b)
+  const displayRounds: DebateRound[] = [
+    ...rounds,
+    ...messageOnlyRounds.map(
+      (roundNumber): DebateRound => ({
+        round_number: roundNumber,
+        status: 'pending',
+        started_at: null,
+        completed_at: null,
+      }),
+    ),
+  ].sort((a, b) => a.round_number - b.round_number)
+
   const canStart = debate?.status === 'pending' && !starting
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">AI Debate Arena</h1>
-        <nav className="flex items-center gap-4">
-          <Link to="/" className="text-sm text-gray-400 hover:text-white">
-            Home
-          </Link>
-          <Link to="/debates" className="text-sm text-gray-400 hover:text-white">
-            Debates
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 rounded-lg px-4 py-2 text-sm font-semibold"
-          >
-            Logout
-          </button>
-        </nav>
-      </header>
+    <PageShell>
+      <h1 className="page-title mb-2">Debate Details</h1>
+      <p className="mb-6 text-sm text-gray-400">Signed in as {user?.email}</p>
 
-      <main className="max-w-3xl mx-auto px-6 py-10">
-        <h2 className="text-2xl font-semibold mb-2">Debate Details</h2>
-        <p className="text-gray-400 mb-8">Signed in as {user?.email}</p>
+      {loading && <LoadingState label="Loading debate..." />}
 
-        {loading && <p className="text-gray-400">Loading debate...</p>}
+      {error && (
+        <div role="alert" className="alert-error mb-6">
+          <p className="text-sm font-medium text-red-200">
+            {errorTitle ?? 'Something went wrong'}
+          </p>
+          <p className="mt-1 text-sm text-red-300/90">{error}</p>
+          {!debate && (
+            <Link
+              to="/debates"
+              className="mt-3 inline-block text-sm text-indigo-300 hover:text-indigo-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              Back to your debates
+            </Link>
+          )}
+        </div>
+      )}
 
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3">
-            <p className="text-sm font-medium text-red-300">
-              {starting ? 'Debate could not be started' : 'Debate not available'}
-            </p>
-            <p className="mt-1 text-sm text-red-300/80">{error}</p>
-            {!debate && (
-              <Link
-                to="/debates"
-                className="mt-3 inline-block text-sm text-indigo-400 hover:text-indigo-300"
-              >
-                Back to your debates
-              </Link>
-            )}
-          </div>
-        )}
+      {transcriptNotice && (
+        <p role="status" className="alert-info mb-4" data-testid="transcript-notice">
+          {transcriptNotice}
+        </p>
+      )}
+
+      {storedNotice && (
+        <p role="status" className="alert-info mb-4" data-testid="stored-notice">
+          {storedNotice}
+        </p>
+      )}
 
         {!loading && debate && (
           <>
             <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
               <div className="flex items-start justify-between gap-4">
-                <h3 className="text-xl font-semibold">{debate.topic}</h3>
+                <h2 className="text-xl font-semibold">{debate.topic}</h2>
                 <span
                   data-testid="debate-status"
                   className={`shrink-0 rounded-full border px-3 py-1 text-xs ${debateStatusTone(debate.status)}`}
@@ -722,15 +915,11 @@ export default function DebateDetail() {
                     onClick={handleStart}
                     disabled={!canStart}
                     data-testid="start-debate"
-                    className={`rounded-lg px-5 py-2.5 text-sm font-semibold ${
-                      canStart
-                        ? 'bg-indigo-600 hover:bg-indigo-700'
-                        : 'cursor-not-allowed bg-indigo-900/50 text-indigo-300/60'
-                    }`}
+                    className="btn-primary px-5 py-2.5"
                   >
                     {starting ? 'Starting debate...' : 'Start debate'}
                   </button>
-                  <p className="mt-2 text-xs text-gray-500">
+                  <p className="mt-2 text-xs text-gray-400">
                     This debate has not started yet. Once started, it runs all
                     rounds before the page returns. This can take about a
                     minute.
@@ -742,6 +931,7 @@ export default function DebateDetail() {
                 <div
                   className="mt-6 rounded-lg border border-blue-900/60 bg-blue-950/40 px-4 py-3"
                   data-testid="live-panel"
+                  aria-live="polite"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-semibold text-blue-200">
@@ -797,9 +987,9 @@ export default function DebateDetail() {
             </div>
 
             <div className="mt-6 rounded-2xl border border-gray-800 bg-gray-900 p-6">
-              <h4 className="text-lg font-semibold mb-4">
+              <h3 className="card-title mb-4">
                 Participating agents ({debate.agents.length})
-              </h4>
+              </h3>
               <ul className="space-y-3">
                 {debate.agents.map((agent) => (
                   <li
@@ -815,7 +1005,7 @@ export default function DebateDetail() {
 
             {debate.status !== 'pending' && (
               <div className="mt-6 rounded-2xl border border-gray-800 bg-gray-900 p-6">
-                <h4 className="text-lg font-semibold mb-4">Rounds</h4>
+                <h3 className="card-title mb-4">Rounds</h3>
                 {rounds.length === 0 ? (
                   <p className="text-sm text-gray-400">
                     No round has been recorded yet.
@@ -825,15 +1015,15 @@ export default function DebateDetail() {
                     {rounds.map((round) => (
                       <li
                         key={round.round_number}
-                        className="flex items-center justify-between rounded-lg border border-gray-800 bg-gray-800/60 px-4 py-3 text-sm"
+                        className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border border-gray-800 bg-gray-800/60 px-4 py-3 text-sm"
                       >
                         <span className="font-semibold">
                           Round {round.round_number}
                         </span>
                         <span className="text-gray-400">
-                          {debateStatusLabel(round.status)}
+                          {roundStatusLabel(round.status)}
                         </span>
-                        <span className="text-gray-500">
+                        <span className="text-gray-400">
                           {round.started_at
                             ? new Date(round.started_at).toLocaleTimeString()
                             : 'not started'}
@@ -851,16 +1041,16 @@ export default function DebateDetail() {
 
             {messages.length > 0 && (
               <div className="mt-6 rounded-2xl border border-gray-800 bg-gray-900 p-6">
-                <h4 className="text-lg font-semibold mb-4">Transcript</h4>
-                <div className="space-y-6">
-                  {rounds.map((round) => {
+                <h3 className="card-title mb-4">Transcript</h3>
+                <div className="space-y-6" aria-live="polite">
+                  {displayRounds.map((round) => {
                     const roundMessages = messagesForRound(round.round_number)
                     if (roundMessages.length === 0) return null
                     return (
                       <section key={round.round_number}>
-                        <h5 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-400">
+                        <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-400">
                           Round {round.round_number}
-                        </h5>
+                        </h4>
                         <div className="space-y-4">
                           {roundMessages.map((message) => {
                             const analyzing = !!analyzingFallacy[message.id]
@@ -881,7 +1071,7 @@ export default function DebateDetail() {
                                   <p className="text-sm font-semibold text-indigo-300">
                                     {message.agent.name}
                                   </p>
-                                  <span className="text-xs uppercase text-gray-500">
+                                  <span className="text-xs uppercase text-gray-400">
                                     {message.message_type}
                                   </span>
                                 </div>
@@ -896,9 +1086,9 @@ export default function DebateDetail() {
                                     }
                                     disabled={analyzing}
                                     data-testid="analyze-argument"
-                                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-50 ${
                                       analyzing
-                                        ? 'cursor-not-allowed bg-purple-900/50 text-purple-300/60'
+                                        ? 'bg-purple-900/50 text-purple-300/60'
                                         : 'bg-purple-700 hover:bg-purple-600'
                                     }`}
                                   >
@@ -912,9 +1102,9 @@ export default function DebateDetail() {
                                     }
                                     disabled={evaluating}
                                     data-testid="evaluate-argument"
-                                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 disabled:cursor-not-allowed disabled:opacity-50 ${
                                       evaluating
-                                        ? 'cursor-not-allowed bg-teal-900/50 text-teal-300/60'
+                                        ? 'bg-teal-900/50 text-teal-300/60'
                                         : 'bg-teal-700 hover:bg-teal-600'
                                     }`}
                                   >
@@ -923,6 +1113,23 @@ export default function DebateDetail() {
                                       : 'Evaluate Argument'}
                                   </button>
                                 </div>
+
+                                {!fallacy && !fallacyError && !analyzing && (
+                                  <p
+                                    className="mt-2 text-xs text-gray-400"
+                                    data-testid="fallacy-not-analyzed"
+                                  >
+                                    Fallacy analysis: not analyzed yet.
+                                  </p>
+                                )}
+                                {!evaluation && !evaluationError && !evaluating && (
+                                  <p
+                                    className="mt-2 text-xs text-gray-400"
+                                    data-testid="evaluation-not-analyzed"
+                                  >
+                                    Argument quality: not analyzed yet.
+                                  </p>
+                                )}
 
                                 {fallacyError && (
                                   <div
@@ -940,7 +1147,7 @@ export default function DebateDetail() {
                                     className="mt-3 rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-3"
                                     data-testid="fallacy-result"
                                   >
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                                       Fallacy Analysis
                                     </p>
                                     {fallacy.fallacy_type === 'no_fallacy' ? (
@@ -996,7 +1203,7 @@ export default function DebateDetail() {
                                         )}
                                       </>
                                     )}
-                                    <p className="mt-2 text-xs text-gray-500">
+                                    <p className="mt-2 text-xs text-gray-400">
                                       A fallacy marks a flaw in the
                                       argument&apos;s reasoning only. It does
                                       not mean the underlying claim is false.
@@ -1020,7 +1227,7 @@ export default function DebateDetail() {
                                     className="mt-3 rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-3"
                                     data-testid="evaluation-result"
                                   >
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                                       Argument Quality
                                     </p>
                                     <dl className="mt-2 grid gap-1 text-sm text-gray-200 sm:grid-cols-2">
@@ -1093,7 +1300,7 @@ export default function DebateDetail() {
                                       {evaluation.explanation}
                                     </p>
                                     <p
-                                      className="mt-2 text-xs text-gray-500"
+                                      className="mt-2 text-xs text-gray-400"
                                       data-testid="evaluation-disclaimer"
                                     >
                                       Argument quality scores measure reasoning
@@ -1119,27 +1326,20 @@ export default function DebateDetail() {
                 data-testid="claims-section"
               >
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <h4 className="text-lg font-semibold">Claims</h4>
+                  <h3 className="card-title">Claims</h3>
                   <button
                     onClick={handleExtractClaims}
                     disabled={extracting}
                     data-testid="extract-claims"
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold ${
-                      extracting
-                        ? 'cursor-not-allowed bg-indigo-900/50 text-indigo-300/60'
-                        : 'bg-indigo-600 hover:bg-indigo-700'
-                    }`}
+                    className="btn-primary px-4 py-2 text-sm"
                   >
                     {extracting ? 'Extracting claims...' : 'Extract Claims'}
                   </button>
                 </div>
 
                 {claimsNotice && (
-                  <div
-                    className="mb-4 rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3"
-                    data-testid="claims-error"
-                  >
-                    <p className="text-sm text-red-300">{claimsNotice}</p>
+                  <div className="mb-4" data-testid="claims-error">
+                    <ErrorBanner title="Claims could not be loaded" message={claimsNotice} />
                   </div>
                 )}
 
@@ -1148,7 +1348,7 @@ export default function DebateDetail() {
                 )}
 
                 {!claimsLoading && claims.length === 0 && !claimsNotice && (
-                  <p className="text-sm text-gray-500" data-testid="claims-empty">
+                  <p className="text-sm text-gray-400" data-testid="claims-empty">
                     No claims yet. Select &quot;Extract Claims&quot; to analyse
                     the messages in this debate.
                   </p>
@@ -1191,11 +1391,7 @@ export default function DebateDetail() {
                               onClick={() => handleRetrieveEvidence(claim.id)}
                               disabled={retrieving}
                               data-testid="retrieve-evidence"
-                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                                retrieving
-                                  ? 'cursor-not-allowed bg-gray-700 text-gray-400'
-                                  : 'bg-gray-700 hover:bg-gray-600'
-                              }`}
+                              className="btn-secondary px-3 py-1.5 text-xs"
                             >
                               {retrieving
                                 ? 'Retrieving sources...'
@@ -1205,11 +1401,7 @@ export default function DebateDetail() {
                               onClick={() => handleVerifyClaim(claim.id)}
                               disabled={verifyLoading}
                               data-testid="verify-claim"
-                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                                verifyLoading
-                                  ? 'cursor-not-allowed bg-indigo-900/50 text-indigo-300/60'
-                                  : 'bg-indigo-600 hover:bg-indigo-700'
-                              }`}
+                              className="btn-primary px-3 py-1.5 text-xs"
                             >
                               {verifyLoading
                                 ? 'Evaluating evidence...'
@@ -1233,7 +1425,7 @@ export default function DebateDetail() {
                               className="mt-3 rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-3"
                               data-testid="verification-result"
                             >
-                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                                 Evidence Evaluation
                               </p>
                               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1267,7 +1459,7 @@ export default function DebateDetail() {
                                   {verification.evidence_summary}
                                 </p>
                               )}
-                              <p className="mt-2 text-xs text-gray-500">
+                              <p className="mt-2 text-xs text-gray-400">
                                 This evaluation reflects what the retrieved
                                 sources indicate. It is not an absolute
                                 guarantee of truth.
@@ -1291,7 +1483,7 @@ export default function DebateDetail() {
                             evidenceState !== undefined &&
                             evidenceState.length === 0 && (
                               <p
-                                className="mt-3 text-xs text-gray-500"
+                                className="mt-3 text-xs text-gray-400"
                                 data-testid="evidence-empty"
                               >
                                 No sources found for this claim.
@@ -1300,7 +1492,7 @@ export default function DebateDetail() {
 
                           {evidenceState && evidenceState.length > 0 && (
                             <div className="mt-3" data-testid="evidence-list">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
                                 Retrieved sources
                               </p>
                               <ul className="mt-2 space-y-2">
@@ -1310,15 +1502,21 @@ export default function DebateDetail() {
                                     data-testid="evidence-item"
                                     className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2"
                                   >
-                                    <a
-                                      href={item.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="break-words text-sm font-medium text-indigo-300 hover:text-indigo-200"
-                                    >
-                                      {item.title}
-                                    </a>
-                                    <p className="mt-0.5 text-xs text-gray-500">
+                                    {safeExternalUrl(item.url) ? (
+                                      <a
+                                        href={safeExternalUrl(item.url) ?? ''}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="break-words text-sm font-medium text-indigo-300 hover:text-indigo-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                      >
+                                        {item.title}
+                                      </a>
+                                    ) : (
+                                      <span className="break-words text-sm font-medium text-gray-200">
+                                        {item.title}
+                                      </span>
+                                    )}
+                                    <p className="mt-0.5 text-xs text-gray-400">
                                       {item.source_name}{' '}
                                       <span className="break-all">
                                         ({item.url})
@@ -1340,15 +1538,279 @@ export default function DebateDetail() {
                   </ul>
                 )}
 
-                <p className="mt-4 text-xs text-gray-500">
+                <p className="mt-4 text-xs text-gray-400">
                   Retrieved sources are search results shown for reference only.
                   They do not indicate whether a claim is true or false.
                 </p>
               </div>
             )}
+
+            {debate.status === 'completed' && (
+              <div className="card mt-6" data-testid="judge-section">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="section-title text-gray-100">
+                      Debate Judge
+                    </h3>
+                    <p className="text-xs text-gray-400">
+                      Scores every participating agent with the fixed rubric
+                      (logical soundness, evidence quality, factual support,
+                      relevance, effectiveness, completeness, fallacy risk) and
+                      declares a winner only when the gap is decisive.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleJudge}
+                    disabled={judging}
+                    data-testid="judge-debate"
+                    className="btn-primary"
+                  >
+                    {judging
+                      ? 'Judging…'
+                      : judgment
+                        ? 'Re-run judgment'
+                        : 'Judge debate'}
+                  </button>
+                </div>
+
+                {judgeError && (
+                  <div className="mt-3" data-testid="judge-error">
+                    <ErrorBanner title="Judging failed" message={judgeError} />
+                  </div>
+                )}
+
+                {!judgment && judgmentNotice && (
+                  <p
+                    className="mt-3 text-sm text-gray-400"
+                    data-testid={
+                      judgmentNotice.includes('not be loaded')
+                        ? 'judgment-error'
+                        : 'judgment-empty'
+                    }
+                  >
+                    {judgmentNotice}
+                  </p>
+                )}
+
+                {judging && (
+                  <p className="mt-3 text-sm text-indigo-300" data-testid="judgment-loading">
+                    The judge is scoring this debate…
+                  </p>
+                )}
+
+                {judgment && (
+                  <div className="mt-4 space-y-4" data-testid="judgment-section">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span
+                        className="text-lg font-bold text-indigo-300"
+                        data-testid="judgment-overall"
+                      >
+                        Overall {overallDisplay(judgment.overall_score)}
+                      </span>
+                      <span
+                        className={judgeOutcomeBadgeClass(judgment.outcome)}
+                        data-testid="judgment-outcome"
+                      >
+                        {outcomeLabel(judgment.outcome)}
+                      </span>
+                      {judgment.outcome === 'winner' && judgment.winner_name && (
+                        <span
+                          className="text-sm font-semibold text-emerald-300"
+                          data-testid="judgment-winner"
+                        >
+                          Winner: {judgment.winner_name}
+                        </span>
+                      )}
+                      {judgment.outcome === 'tie' && (
+                        <span
+                          className="text-sm font-semibold text-sky-300"
+                          data-testid="judgment-tie"
+                        >
+                          Scores are too close to call a winner.
+                        </span>
+                      )}
+                      {judgment.outcome === 'inconclusive' && (
+                        <span
+                          className="text-sm font-semibold text-amber-300"
+                          data-testid="judgment-inconclusive"
+                        >
+                          Not enough stored debate data to produce a verdict.
+                        </span>
+                      )}
+                    </div>
+
+                    <p
+                      className="text-sm leading-relaxed text-gray-300"
+                      data-testid="judgment-summary"
+                    >
+                      {judgment.summary}
+                    </p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {judgment.agent_scores.map((card) => (
+                        <div
+                          key={card.agent_id}
+                          className="rounded-lg border border-gray-800 bg-gray-900/60 p-4"
+                          data-testid="agent-judgment"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p
+                                className="text-sm font-semibold text-gray-100"
+                                data-testid="agent-name"
+                              >
+                                {card.agent_name}
+                              </p>
+                              <p className="text-xs text-gray-400">
+                                {card.agent_role}
+                              </p>
+                            </div>
+                            <span
+                              className="text-lg font-bold text-indigo-300"
+                              data-testid="agent-score"
+                            >
+                              {overallDisplay(card.final_score)}
+                            </span>
+                          </div>
+
+                          <dl
+                            className="mt-3 space-y-1"
+                            data-testid="agent-dimensions"
+                          >
+                            {DIMENSION_KEYS.map((key) => {
+                              const value = card.dimensions[key]
+                              const unavailable =
+                                value === null || value === undefined
+                              return (
+                                <div
+                                  key={key}
+                                  className="flex items-center justify-between gap-2 text-xs"
+                                  data-testid="dimension-row"
+                                >
+                                  <dt
+                                    className={
+                                      unavailable
+                                        ? 'text-gray-400'
+                                        : 'text-gray-400'
+                                    }
+                                  >
+                                    {DIMENSION_LABELS[key]}
+                                  </dt>
+                                  <dd
+                                    className={
+                                      unavailable
+                                        ? 'text-gray-400 italic'
+                                        : 'font-medium text-gray-200'
+                                    }
+                                    data-testid={`dimension-${key}`}
+                                  >
+                                    {dimensionDisplay(value)}
+                                  </dd>
+                                </div>
+                              )
+                            })}
+                          </dl>
+
+                          {card.strengths.length > 0 && (
+                            <div className="mt-3" data-testid="agent-strengths">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+                                Strengths
+                              </p>
+                              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-gray-300">
+                                {card.strengths.map((item, index) => (
+                                  <li key={index}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {card.weaknesses.length > 0 && (
+                            <div className="mt-3" data-testid="agent-weaknesses">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-amber-400">
+                                Weaknesses
+                              </p>
+                              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-gray-300">
+                                {card.weaknesses.map((item, index) => (
+                                  <li key={index}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <div className="mt-3 space-y-1 text-xs text-gray-400">
+                            {card.reasoning_quality && (
+                              <p data-testid="agent-reasoning">
+                                Reasoning: {card.reasoning_quality}
+                              </p>
+                            )}
+                            {card.evidence_quality_assessment && (
+                              <p data-testid="agent-evidence">
+                                Evidence use: {card.evidence_quality_assessment}
+                              </p>
+                            )}
+                            {card.factual_support_assessment && (
+                              <p data-testid="agent-factual">
+                                Factual support: {card.factual_support_assessment}
+                              </p>
+                            )}
+                            {card.fallacy_impact_assessment && (
+                              <p data-testid="agent-fallacy">
+                                Fallacy impact: {card.fallacy_impact_assessment}
+                              </p>
+                            )}
+                          </div>
+
+                          {card.limitations.length > 0 && (
+                            <div className="mt-3" data-testid="agent-limitations">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                Limitations
+                              </p>
+                              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-gray-400">
+                                {card.limitations.map((item, index) => (
+                                  <li key={index}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          <p className="mt-2 text-xs text-gray-400">
+                            Judge confidence: {card.confidence}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {judgment.limitations && judgment.limitations.length > 0 && (
+                      <div data-testid="judgment-limitations">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                          Judgment limitations
+                        </p>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-gray-400">
+                          {judgment.limitations.map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <p
+                      className="text-xs text-gray-400"
+                      data-testid="judgment-disclaimer"
+                    >
+                      Scores measure argument quality against the published
+                      rubric weights (logical soundness 0.20, evidence quality
+                      0.20, factual support 0.15, relevance 0.15, effectiveness
+                      0.10, completeness 0.10, fallacy risk 0.10 penalty). A
+                      declared winner is a rubric recommendation for this
+                      debate, not proof that its claims are objectively true.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
-      </main>
-    </div>
+    </PageShell>
   )
 }

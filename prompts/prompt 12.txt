@@ -1,0 +1,395 @@
+# MODULE 12 — ADVANCED ANALYTICS + RESULTS DASHBOARD
+
+You are working on my existing project:
+
+**MAVES (AI Debate Arena) — Multi-Agent LLM for Argument Verification**
+
+Your task is to implement MODULE 12 ONLY: Advanced Analytics and the Debate Results Dashboard.
+
+## 1. Existing Technology Stack
+
+Backend:
+- Python
+- FastAPI
+- Async SQLAlchemy
+- Alembic
+- PostgreSQL
+- Redis
+- JWT authentication
+- Groq API through the existing LLM provider abstraction
+
+Frontend:
+- React
+- Vite
+- TypeScript
+- Tailwind CSS
+
+Existing project capabilities may include:
+- Authentication and protected routes
+- Debate creation and agent selection
+- Role-based AI agents
+- Multi-round debate orchestration
+- WebSocket-based live debate updates
+- Claims and evidence retrieval
+- Evidence-based claim verification
+- Fallacy detection and argument evaluation from Module 10
+- Debate Judge and scoring from Module 11
+
+## 2. Mandatory First Step: Inspect the Repository
+
+Before coding:
+
+1. Read the existing README and project documentation.
+2. Inspect the complete frontend and backend folder structure.
+3. Inspect existing database models, relationships, migrations, schemas, services, routes, and authentication dependencies.
+4. Inspect the existing debate transcript, claim verification, fallacy analysis, and judgment implementations.
+5. Verify which Module 10 and Module 11 features are actually implemented and tested.
+6. Identify the existing frontend layout, components, API client, routing, and styling conventions.
+7. Inspect the package scripts and existing test setup.
+
+Do not assume planned features exist. Reuse existing models and endpoints where available.
+
+**Do not recreate or duplicate previously implemented modules. Do not break existing features.**
+
+## 3. Objective
+
+Build an analytics dashboard that helps users understand debate activity, compare participating agents, review factual support, analyze argument quality, and inspect final judgment results.
+
+The dashboard must use real data from the authenticated user's existing debates and analysis records.
+
+Do not use hardcoded demonstration statistics, fabricated judgments, mock production data, or invented accuracy metrics.
+
+## 4. Dashboard Overview
+
+Create or extend the existing dashboard page with these sections.
+
+### A. Key Performance Indicators
+
+Display metrics calculated from actual stored records:
+
+- Total debates
+- Completed debates
+- Running debates
+- Failed debates
+- Total debate messages
+- Total extracted claims
+- Claims with completed verification
+- Debates with a generated judgment
+
+Calculate completion rates only when the denominator is meaningful.
+
+Define the counting rules clearly. For example, count a completed debate as one whose persisted status is completed, rather than counting any debate that has at least one message.
+
+Do not label a metric as accuracy unless it is backed by an appropriate ground-truth evaluation dataset.
+
+### B. Debate Activity
+
+Create a chart showing debate activity over time.
+
+Requirements:
+- Support a sensible default time range.
+- Allow the user to select a time range if the existing architecture supports it.
+- Group records by day or week as appropriate.
+- Display the date, count, and chart title clearly.
+- Use actual debate creation timestamps.
+- Handle empty periods and empty datasets correctly.
+
+Use an existing chart library if one is already installed. Otherwise, select a lightweight React-compatible library only if necessary and document the dependency.
+
+### C. Debate Status Distribution
+
+Show the distribution of actual debate statuses, such as:
+- Created
+- Running
+- Completed
+- Failed
+
+Only include statuses that exist in the current model. Do not invent additional lifecycle states.
+
+Provide labels and exact counts alongside the visualization.
+
+### D. Claim Verification Analytics
+
+Display actual stored claim-verification verdict counts:
+- Supported
+- Contradicted
+- Insufficient evidence
+
+Include:
+- Total claims with verification results
+- Verdict distribution
+- Confidence-level distribution if available
+- A clear explanation of the time period or scope used
+
+Do not count unverified claims as insufficient evidence. An unverified claim is different from a claim that has been evaluated and found to have insufficient evidence.
+
+Do not call the proportion of supported claims overall factual accuracy.
+
+### E. Agent Performance Comparison
+
+If Module 11's judgment data exists, provide a comparison of agents using stored judgment results.
+
+Show:
+- Agent name and role
+- Average score from actual judgments
+- Number of evaluated appearances
+- Score breakdown by rubric dimension when available
+- Relevant strengths and weaknesses from saved assessments
+
+Use the actual scoring rubric implemented in Module 11. Do not introduce a second scoring formula.
+
+Define how averages are calculated and ensure agents with no evaluations are displayed as unavailable rather than assigned zero.
+
+If the judge module is not implemented, do not fabricate agent performance scores. Display a clear unavailable state and report the missing dependency.
+
+### F. Argument Quality and Fallacy Analytics
+
+If Module 10 is implemented, show:
+- Fallacy types and counts
+- Severity distribution
+- Average stored argument evaluation scores by dimension
+- Number of analyzed messages
+- Number of messages not yet analyzed, if it can be computed reliably
+
+Use stored results only.
+
+Do not imply that a detected fallacy automatically means a claim is false. Do not calculate fallacy statistics from text that has not been analyzed.
+
+If Module 10 is unavailable, show a clear feature-unavailable state without invented data.
+
+### G. Recent Debates
+
+Display a table or responsive list of the user's recent debates.
+
+Include, where available:
+- Topic
+- Creation date
+- Status
+- Number of participating agents
+- Number of rounds
+- Number of messages
+- Whether claim verification has been performed
+- Whether a final judgment exists
+
+Provide a link to the existing debate detail page.
+
+Include sensible sorting or pagination if necessary. Do not load every historical message just to render the dashboard list.
+
+### H. Debate Results Detail
+
+Where a judgment exists, allow the user to navigate to a results view containing:
+- Judge's summary
+- Winner, tie, or inconclusive outcome
+- Overall debate score
+- Agent comparison
+- Rubric breakdown
+- Claim verification summary
+- Fallacy and argument evaluation summary, if available
+- Evaluation limitations
+
+Reuse the existing judgment and debate detail UI where possible instead of duplicating it.
+
+## 5. Backend Analytics API
+
+Inspect the existing API structure and implement endpoints consistent with current conventions.
+
+Suggested endpoints:
+
+### Dashboard summary
+
+`GET /api/v1/analytics/summary`
+
+Return real counts for:
+- Total debates
+- Completed debates
+- Running debates
+- Failed debates
+- Total messages
+- Extracted claims
+- Verified claims
+- Debates with judgments
+
+### Debate activity
+
+`GET /api/v1/analytics/debate-activity`
+
+Return grouped debate counts over the selected time range.
+
+### Claim verification statistics
+
+`GET /api/v1/analytics/claim-verification`
+
+Return counts by stored verdict and confidence level.
+
+### Agent performance
+
+`GET /api/v1/analytics/agent-performance`
+
+Return aggregate statistics derived from actual stored judgment records.
+
+### Fallacy and argument quality
+
+`GET /api/v1/analytics/argument-quality`
+
+Return available fallacy and argument evaluation aggregates from persisted Module 10 results.
+
+### Recent debates
+
+`GET /api/v1/analytics/recent-debates`
+
+Return a paginated list of recent debates with lightweight summary fields.
+
+You may consolidate or adjust these routes to match the existing project architecture. Do not create redundant endpoints if equivalent functionality already exists.
+
+All endpoints must:
+- Require authentication.
+- Restrict results to the authenticated user's own debates.
+- Respect the existing ownership model and foreign-key relationships.
+- Validate query parameters.
+- Return predictable response schemas.
+- Handle empty datasets correctly.
+- Avoid N+1 query patterns.
+- Use efficient SQL aggregation where appropriate.
+- Avoid exposing another user's private data.
+- Avoid retrieving complete transcripts when only aggregate counts are required.
+
+Do not add a new database table unless there is a demonstrated need. Prefer computing analytics from existing persisted records for this module.
+
+If caching is genuinely useful, use the existing Redis configuration with a clear expiration and invalidation strategy. Do not introduce caching complexity without a concrete benefit.
+
+## 6. Frontend Implementation
+
+Integrate the dashboard into the existing React application.
+
+Requirements:
+- Follow the existing layout, colors, typography, and component conventions.
+- Use the existing centralized API client.
+- Reuse existing authentication and protected-route logic.
+- Create reusable KPI cards, chart components, and loading/error/empty states.
+- Support desktop and mobile layouts.
+- Ensure the dashboard remains usable at narrow viewport widths.
+- Use clear chart titles, labels, and units.
+- Do not rely on color alone to distinguish verdicts or statuses.
+- Provide exact counts and accessible textual summaries alongside charts.
+- Use semantic HTML and keyboard-accessible controls.
+- Avoid unnecessary animations and excessive visual effects.
+
+### Required UI states
+
+Handle:
+1. Initial loading
+2. Successful data retrieval
+3. Empty account with no debates
+4. Partial data availability
+5. Unauthorized session
+6. Backend failure
+7. Missing Module 10 or Module 11 results
+8. Invalid date-range filters
+
+Do not silently replace failed API requests with fake values.
+
+## 7. Data Integrity and Metric Definitions
+
+Document each metric and its source.
+
+Examples:
+- Debate counts come from the Debate table and persisted status.
+- Message counts come from stored debate messages.
+- Claim counts come from stored claims.
+- Verification counts come from persisted claim verification records.
+- Agent performance comes from saved judgment records.
+- Fallacy statistics come from persisted fallacy-analysis results.
+
+Check for duplicate joins that could inflate counts. Use distinct identifiers or appropriate subqueries where necessary.
+
+Handle timezone boundaries consistently with the project's timestamp conventions.
+
+If a dataset is insufficient for an aggregate, return an explicit unavailable or empty result rather than inventing a score.
+
+## 8. Testing
+
+Add tests using the existing backend and frontend testing frameworks.
+
+Cover:
+- Correct summary counts
+- Correct debate status distribution
+- Activity grouping and date-range filtering
+- Correct claim-verdict counts
+- Unverified claims excluded from verification verdict counts
+- Correct agent score aggregation
+- Missing judgment records
+- Missing fallacy/evaluation records
+- Empty account behavior
+- Pagination and query validation
+- Authentication requirements
+- Ownership isolation between users
+- Avoidance of duplicate counts caused by joins
+- API error handling
+- Frontend loading, empty, error, and success states
+- Existing debate, claim, evidence, verification, and judgment regression tests
+
+Use fixtures and mocked external services where appropriate. Analytics tests must not require real Groq or Tavily requests.
+
+Run the available tests, backend lint/type checks if configured, and frontend build/type checks.
+
+Report actual results. Do not claim a test passed unless it was executed successfully.
+
+## 9. Documentation
+
+Update the README or relevant documentation with:
+- Dashboard features
+- Analytics endpoints
+- Metric definitions
+- Data sources
+- Authentication and ownership behavior
+- Chart dependencies
+- Test commands
+- Known limitations
+
+Explicitly state that stored claim-verification verdict distributions are not equivalent to independently measured factual accuracy.
+
+## 10. Strict Constraints
+
+- Implement Module 12 only.
+- Do not start Module 13 or Module 14.
+- Do not rebuild authentication, debate orchestration, claim extraction, evidence retrieval, claim verification, fallacy detection, or the judge.
+- Do not introduce a new LLM provider.
+- Do not add Google Fact Check API integration.
+- Do not introduce LangGraph, Celery, Kafka, RabbitMQ, or another queue system.
+- Do not use fake data in production components.
+- Do not expose API keys or secrets.
+- Do not delete `.env.example`.
+- Do not modify old migrations.
+- Do not create unnecessary database migrations.
+- Preserve existing async SQLAlchemy conventions.
+- Preserve existing WebSocket behavior.
+- Avoid unrelated refactoring.
+- Keep the implementation modular, testable, and maintainable.
+
+## 11. Final Verification
+
+After implementation:
+
+1. Run relevant backend tests.
+2. Run frontend tests and build/type checks if available.
+3. Check Alembic migration status.
+4. Confirm the application starts successfully.
+5. Verify analytics endpoints return actual database-backed results.
+6. Verify user ownership isolation.
+7. Verify the dashboard handles an empty dataset.
+8. Verify existing project functionality still works.
+9. Inspect the final git diff for unrelated changes.
+
+Provide a final report containing:
+- Files created
+- Files modified
+- Endpoints added or reused
+- Dashboard features implemented
+- Metric definitions and data sources
+- Dependencies added, if any
+- Tests actually executed and their results
+- Manual verification steps
+- Known limitations
+- Incomplete work
+
+**STOP after Module 12. Do not implement Module 13 or Module 14 in this task.**

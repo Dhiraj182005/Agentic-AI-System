@@ -16,6 +16,8 @@ from app.api.debates import router as debates_router
 from app.api.claims import router as claims_router
 from app.api.fallacies import router as fallacies_router
 from app.api.evaluations import router as evaluations_router
+from app.api.judge import router as judge_router
+from app.api.analytics import router as analytics_router
 from app.api.websocket import router as websocket_router
 
 settings = get_settings()
@@ -47,6 +49,8 @@ app = FastAPI(
         {"name": "claims", "description": "Claim extraction and evidence retrieval endpoints"},
         {"name": "fallacies", "description": "Fallacy detection endpoints"},
         {"name": "evaluations", "description": "Argument quality evaluation endpoints"},
+        {"name": "judge", "description": "Debate judge and overall scoring endpoints"},
+        {"name": "analytics", "description": "Analytics dashboard endpoints"},
     ],
 )
 
@@ -66,6 +70,8 @@ app.include_router(debates_router, prefix="/api/v1")
 app.include_router(claims_router, prefix="/api/v1")
 app.include_router(fallacies_router, prefix="/api/v1")
 app.include_router(evaluations_router, prefix="/api/v1")
+app.include_router(judge_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
 # WebSocket routes carry their own /ws path and need no /api/v1 prefix.
 app.include_router(websocket_router)
 

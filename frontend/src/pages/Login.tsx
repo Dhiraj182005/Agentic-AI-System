@@ -1,15 +1,19 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { ApiClientError } from '../services/api'
+import { apiErrorMessage } from '../services/api'
 
 export default function Login() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const registeredNotice =
+    (location.state as { registered?: boolean } | null)?.registered === true
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -19,56 +23,65 @@ export default function Login() {
       await login(email, password)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(
-        err instanceof ApiClientError
-          ? err.detail
-          : 'Unable to log in. Please try again.',
-      )
+      setError(apiErrorMessage(err, 'Unable to log in. Please try again.'))
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      <div className="max-w-md w-full bg-gray-900 rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4 py-10">
+      <div className="max-w-md w-full rounded-2xl border border-gray-800 bg-gray-900 p-8 shadow-xl">
         <h1 className="text-2xl font-bold mb-6 text-center">AI Debate Arena</h1>
         <h2 className="text-lg font-semibold mb-4 text-center text-gray-300">
           Sign In
         </h2>
 
+        {registeredNotice && (
+          <p
+            role="status"
+            className="mb-4 text-center text-sm text-emerald-300 bg-emerald-950/50 border border-emerald-900/60 rounded-lg px-4 py-2"
+          >
+            Account created. Sign in to continue.
+          </p>
+        )}
+
         {error && (
-          <p className="mb-4 text-center text-red-400 text-sm bg-red-900/30 rounded-lg px-4 py-2">
+          <p role="alert" className="alert-error mb-4 text-center">
             {error}
           </p>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Email</label>
+            <label htmlFor="login-email" className="label">
+              Email
+            </label>
             <input
+              id="login-email"
               type="email"
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Password</label>
+            <label htmlFor="login-password" className="label">
+              Password
+            </label>
             <input
+              id="login-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full bg-gray-800 rounded-lg px-4 py-2 border border-gray-700 focus:outline-none focus:border-indigo-500"
+              className="input"
             />
           </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg py-2 font-semibold"
-          >
+          <button type="submit" disabled={submitting} className="btn-primary w-full">
             {submitting ? 'Signing in...' : 'Login'}
           </button>
         </form>

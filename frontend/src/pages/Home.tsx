@@ -1,75 +1,63 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import PageShell from '../components/ui/PageShell'
 
 export default function Home() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-
-  function handleLogout() {
-    logout()
-    navigate('/login', { replace: true })
-  }
+  const { user } = useAuth()
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">AI Debate Arena</h1>
-        <button
-          onClick={handleLogout}
-          className="bg-red-600 hover:bg-red-700 rounded-lg px-4 py-2 text-sm font-semibold"
-        >
-          Logout
-        </button>
-      </header>
+    <PageShell>
+      <div className="mb-8">
+        <h1 className="page-title">
+          Welcome{user?.email ? `, ${user.email}` : ''}
+        </h1>
+        <p className="mt-2 text-gray-400">
+          Create a debate, choose the participating agents, run it live, review
+          claims and evidence, analyze argument quality, generate an overall
+          judgment and track your results in the dashboard.
+        </p>
+      </div>
 
-<main className="max-w-3xl mx-auto px-6 py-10">
-          <h2 className="text-2xl font-semibold mb-2">
-            Welcome, {user?.email}
-          </h2>
-          <p className="text-gray-400 mb-8">
-            Create a debate, choose the participating agents and manage your
-            debates. Debate execution arrives in a later module.
-          </p>
+      <div className="mb-8 flex flex-wrap gap-3">
+        <Link to="/debates/new" className="btn-primary">
+          New Debate
+        </Link>
+        <Link to="/debates" className="btn-secondary">
+          My Debates
+        </Link>
+        <Link to="/dashboard" className="btn-secondary">
+          Dashboard
+        </Link>
+        <Link to="/agents" className="btn-secondary">
+          Agents
+        </Link>
+      </div>
 
-          <div className="flex flex-wrap gap-3 mb-8">
-            <Link
-              to="/debates/new"
-              className="inline-block bg-indigo-600 hover:bg-indigo-700 rounded-lg px-4 py-2 text-sm font-semibold"
-            >
-              New Debate
-            </Link>
-            <Link
-              to="/debates"
-              className="inline-block bg-gray-800 hover:bg-gray-700 rounded-lg px-4 py-2 text-sm font-semibold"
-            >
-              My Debates
-            </Link>
-            <Link
-              to="/agents"
-              className="inline-block bg-gray-800 hover:bg-gray-700 rounded-lg px-4 py-2 text-sm font-semibold"
-            >
-              Test Role-Based Agents
-            </Link>
-          </div>
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6">
-          <h3 className="text-lg font-semibold mb-4">Account</h3>
-          <div className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3">
-            <span className="text-gray-300">Authentication Status</span>
-            <span className="flex items-center text-green-400">
-              <span className="inline-block w-3 h-3 rounded-full mr-2 bg-green-500" />
-              Authenticated
-            </span>
-          </div>
-          <div className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3 mt-3">
-            <span className="text-gray-300">Email</span>
-            <span>{user?.email}</span>
-          </div>
-          <div className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3 mt-3">
-            <span className="text-gray-300">User ID</span>
-            <span className="font-mono text-sm text-gray-400">{user?.id}</span>
-          </div>
+      <section className="card" aria-labelledby="account-heading">
+        <h2 id="account-heading" className="card-title mb-4">
+          Account
+        </h2>
+        <div className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3">
+          <span className="text-gray-300">Authentication Status</span>
+          <span className="flex items-center text-emerald-400">
+            <span
+              aria-hidden="true"
+              className="inline-block w-3 h-3 rounded-full mr-2 bg-emerald-500"
+            />
+            Authenticated
+          </span>
         </div>
-      </main>
-    </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-800 rounded-lg px-4 py-3 mt-3">
+          <span className="text-gray-300">Email</span>
+          <span className="break-all text-right">{user?.email}</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-gray-800 rounded-lg px-4 py-3 mt-3">
+          <span className="text-gray-300">User ID</span>
+          <span className="font-mono text-sm text-gray-400 break-all text-right">
+            {user?.id}
+          </span>
+        </div>
+      </section>
+    </PageShell>
   )
 }

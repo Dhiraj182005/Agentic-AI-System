@@ -80,6 +80,13 @@ class Debate(BaseModel):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    judgment = relationship(
+        "DebateJudgment",
+        back_populates="debate",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def round_count(self) -> int:
