@@ -22,10 +22,10 @@
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-indigo-600 text-white hover:bg-indigo-700;
+    @apply btn bg-indigo-600 text-white shadow-lg shadow-indigo-950/40 hover:bg-indigo-500;
   }
   .btn-secondary {
-    @apply btn bg-gray-800 text-gray-200 hover:bg-gray-700;
+    @apply btn border border-gray-700 bg-gray-800/80 text-gray-100 hover:border-gray-600 hover:bg-gray-700;
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
@@ -47,7 +47,7 @@
 
   /* Surfaces ------------------------------------------------------------ */
   .card {
-    @apply rounded-2xl border border-gray-800 bg-gray-900 p-6;
+    @apply rounded-2xl border border-gray-800 bg-gray-900 p-6 shadow-card;
   }
   .card-title {
     @apply text-lg font-semibold text-white;
@@ -72,3 +72,12 @@
     @apply rounded-lg border border-indigo-900/60 bg-indigo-950/40 px-4 py-3 text-sm text-indigo-200;
   }
 }
+/* Activity is indeterminate; no animation changes a reported percentage. */
+.activity-spinner { display:inline-block; width:.85rem; height:.85rem; border:2px solid #a78bfa33; border-top-color:#c4b5fd; border-radius:50%; animation:maves-spin 1s linear infinite; }
+.progress-fill { transition:width .25s ease; }
+.stage-row { transition:background-color .2s ease,border-color .2s ease; }
+.debate-tabs { scrollbar-width:thin; scrollbar-color:#4b3b70 transparent; scroll-padding-inline:1rem; }
+.debate-tabs::-webkit-scrollbar { height:3px; }
+.debate-tabs::-webkit-scrollbar-thumb { background:#4b3b70; border-radius:4px; }
+@keyframes maves-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .activity-spinner { animation:none; } .progress-fill,.stage-row { transition:none; } .debate-tabs { scroll-behavior:auto; } }

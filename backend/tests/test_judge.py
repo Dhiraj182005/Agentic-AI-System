@@ -279,6 +279,11 @@ def judge_json(name_scores: dict, summary: str | None = None) -> str:
                     "relevance": dims.get("relevance", 8.0),
                     "effectiveness": dims.get("effectiveness", 7.0),
                     "completeness": dims.get("completeness", 7.0),
+                    **(
+                        {"responsiveness": dims["responsiveness"]}
+                        if "responsiveness" in dims
+                        else {}
+                    ),
                 },
                 "strengths": ["Clear claim structure"],
                 "weaknesses": ["Could cite more sources"],
@@ -346,19 +351,24 @@ def patch_provider(fake):
 
 
 def test_score_calculation_and_weights():
+    # Rubric v2 (documented in app/services/judge_rubric.py).
+    assert judge_rubric.RUBRIC_VERSION == 2
     assert abs(sum(judge_rubric.WEIGHTS.values()) - 1.0) < 1e-9
     assert judge_rubric.WEIGHTS["logical_soundness"] == 0.20
-    assert judge_rubric.WEIGHTS["evidence_quality"] == 0.20
+    assert judge_rubric.WEIGHTS["evidence_quality"] == 0.15
     assert judge_rubric.WEIGHTS["factual_support"] == 0.15
-    assert judge_rubric.WEIGHTS["relevance"] == 0.15
+    assert judge_rubric.WEIGHTS["responsiveness"] == 0.15
+    assert judge_rubric.WEIGHTS["relevance"] == 0.10
     assert judge_rubric.WEIGHTS["effectiveness"] == 0.10
-    assert judge_rubric.WEIGHTS["completeness"] == 0.10
+    assert judge_rubric.WEIGHTS["completeness"] == 0.05
     assert judge_rubric.WEIGHTS["fallacy_risk"] == 0.10
+    assert set(judge_rubric.DIMENSION_DEFINITIONS) == set(judge_rubric.WEIGHTS)
 
     dims = {
         "logical_soundness": 8.0,
         "evidence_quality": 7.0,
         "factual_support": 6.0,
+        "responsiveness": 4.0,
         "relevance": 9.0,
         "effectiveness": 5.0,
         "completeness": 7.0,
@@ -366,11 +376,12 @@ def test_score_calculation_and_weights():
     }
     expected = (
         0.20 * 8.0
-        + 0.20 * 7.0
+        + 0.15 * 7.0
         + 0.15 * 6.0
-        + 0.15 * 9.0
+        + 0.15 * 4.0
+        + 0.10 * 9.0
         + 0.10 * 5.0
-        + 0.10 * 7.0
+        + 0.05 * 7.0
         + 0.10 * (10.0 - 3.0)
     )
     assert abs(judge_rubric.compute_agent_score(dims) - expected) < 1e-9
@@ -538,7 +549,7 @@ async def test_judge_endpoint_clear_lead(client):
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert fake.calls == 1
+    assert fake.calls == 2, "one judge call per agent"
 
     assert body["outcome"] == "winner"
     assert body["winner_name"] == "Economist"
@@ -606,6 +617,9 @@ async def test_judge_tie_when_scores_close(client):
 
 
 async def test_judge_inconclusive_when_data_missing(client):
+    """Rubric v2: missing optional analyses no longer block a ranking. Equal
+    transcript-based scores are a tie (never a manufactured winner), and the
+    missing analyses are reported as limitations."""
     token = await register_and_login(client, unique_email("judge-inc"))
     debate = await seed_completed_debate(client, token)  # no analyses at all
 
@@ -616,13 +630,29 @@ async def test_judge_inconclusive_when_data_missing(client):
         )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["outcome"] == "inconclusive"
+    assert body["outcome"] == "tie"
     assert body["winner_agent_id"] is None
     assert len(body["agent_scores"]) == 2
     limitations = " ".join(body["limitations"] or [])
-    assert "inconclusive" in limitations
+    assert "transcript-based dimensions only" in limitations
+    assert "same final score" in limitations
     assert "Fallacy analysis has not been run" in limitations
     assert "No claim verification results" in limitations
+
+    # Distinct contributions without any analysis still produce a ranking.
+    strong = dict(EQUAL_DIMS, logical_soundness=9.0, responsiveness=8.5)
+    weak = dict(EQUAL_DIMS, logical_soundness=4.0, responsiveness=3.0)
+    fake = FakeLLM(judge_json({"Economist": strong, "Lawyer": weak}))
+    with patch_provider(fake):
+        resp = await client.post(
+            f"/api/v1/debates/{debate['id']}/judge?regenerate=true", headers=auth(token)
+        )
+    body = resp.json()
+    assert resp.status_code == 200 and body["outcome"] == "winner", resp.text
+    assert body["winner_name"] == "Economist" and fake.calls == 2
+    by_name = {card["agent_name"]: card for card in body["agent_scores"]}
+    assert by_name["Economist"]["dimensions"]["responsiveness"] == 8.5
+    assert by_name["Economist"]["final_score"] > by_name["Lawyer"]["final_score"]
 
 
 async def test_judge_factual_support_rules(client):
@@ -776,7 +806,7 @@ async def test_judge_persistence_and_retrieval(client):
     assert created["id"] == fetched["id"]
     assert created["overall_score"] == fetched["overall_score"]
     assert created["agent_scores"] == fetched["agent_scores"]
-    assert fake.calls == 1, "GET must never call the LLM"
+    assert fake.calls == 2, "GET must never call the LLM (2 = the one POST, one call per agent)"
 
     async with _test_session() as session:
         rows = (
@@ -897,7 +927,7 @@ async def test_judge_duplicate_requests(client):
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
     assert first.json()["id"] == second.json()["id"]
-    assert fake.calls == 1, "the second request must reuse the stored judgment"
+    assert fake.calls == 2, "the second request must reuse the stored judgment (2 = one call per agent)"
 
     async with _test_session() as session:
         rows = (
@@ -980,6 +1010,9 @@ async def main():
 
     await teardown()
     print("\nAll Module 11 (debate judge + overall scoring) tests PASSED!")
+
+    if os.environ.get("MAVES_FOCUSED_TESTS") == "1":
+        return
 
     print("\nRegression: Module 0 (foundation)...")
     from tests import test_basic

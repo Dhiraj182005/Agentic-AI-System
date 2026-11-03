@@ -1,9 +1,11 @@
 import logging
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.argument_evaluation import ArgumentEvaluation
@@ -60,8 +62,7 @@ class MessageAnalysis:
 class FallacyAnalysisResult:
     """One message's analysis outcome: the result plus its persisted row.
 
-    fallacy is None when no real fallacy was detected (no_fallacy results
-    are never persisted as rows).
+    Explicit no_fallacy outcomes are persisted with timestamps too.
     """
 
     analysis: MessageAnalysis
@@ -166,7 +167,7 @@ async def _replace_message_fallacies(
     """Duplicate protection: recalculate one message's fallacies from scratch.
 
     Re-running analysis replaces the message's existing rows instead of
-    appending, and only real fallacies are stored (never no_fallacy), so
+    appending, including explicit no_fallacy outcomes, so
     repeated requests cannot create duplicate records.
     """
     await db.execute(
@@ -174,8 +175,6 @@ async def _replace_message_fallacies(
     )
     created: list[Fallacy] = []
     for item in detected:
-        if item.fallacy_type == "no_fallacy":
-            continue
         row = Fallacy(
             debate_id=analysis.debate_id,
             message_id=analysis.message_id,
@@ -194,43 +193,31 @@ async def _replace_message_fallacies(
 async def analyze_debate_fallacies(
     db: AsyncSession, user: User, debate_id: UUID
 ) -> list[FallacyAnalysisResult]:
-    """Analyze every persisted message of a debate and persist real fallacies.
-
-    Results are stored atomically: a failure part-way through leaves the
-    database unchanged.
-    """
-    debate = await get_debate(db, user, debate_id)
-    messages = await _load_debate_messages(db, debate.id)
-    if not messages:
-        raise ArgumentAnalysisValidationError(
-            "Debate has no messages to analyze"
-        )
-
-    detection = FallacyDetectionService()
-    results: list[FallacyAnalysisResult] = []
-    for analysis in messages:
-        detected = await detection.detect(
-            analysis.content,
-            analysis.agent_name,
-            analysis.topic,
-            analysis.previous_content,
-        )
-        created = await _replace_message_fallacies(db, analysis, [detected])
-        results.append(
-            FallacyAnalysisResult(
-                analysis=analysis, detected=detected, fallacy=created[0] if created else None
-            )
-        )
-
-    await db.commit()
+    """Compatibility service: resumable batch, with per-message persistence."""
+    from app.services.message_pipeline import run_message_batch
+    await run_message_batch(db, user, debate_id, stage="fallacy")
+    results = []
+    for row, _ in await list_fallacies(db, user, debate_id):
+        analysis = await get_message_for_user(db, user, row.message_id)
+        results.append(FallacyAnalysisResult(analysis, DetectedFallacy(
+            fallacy_type=row.fallacy_type, severity=row.severity, confidence=row.confidence,
+            explanation=row.explanation, evidence_span=row.evidence_span), row))
     return results
 
 
+
 async def analyze_message_fallacy(
-    db: AsyncSession, user: User, message_id: UUID
+    db: AsyncSession, user: User, message_id: UUID, *, force: bool = False
 ) -> FallacyAnalysisResult:
-    """Analyze a single message and persist the result if it is a real fallacy."""
+    """Analyze a single message and persist its explicit outcome."""
     analysis = await get_message_for_user(db, user, message_id)
+    await _message_lock(db, message_id)
+    existing = (await db.execute(select(Fallacy).where(Fallacy.message_id == message_id))).scalars().first()
+    if existing is not None and not force:
+        return FallacyAnalysisResult(analysis, DetectedFallacy(
+            fallacy_type=existing.fallacy_type, severity=existing.severity,
+            confidence=existing.confidence, explanation=existing.explanation,
+            evidence_span=existing.evidence_span), existing)
     detected = await FallacyDetectionService().detect(
         analysis.content,
         analysis.agent_name,
@@ -239,6 +226,8 @@ async def analyze_message_fallacy(
     )
     created = await _replace_message_fallacies(db, analysis, [detected])
     await db.commit()
+    for row in created:
+        await db.refresh(row)
     return FallacyAnalysisResult(
         analysis=analysis, detected=detected, fallacy=created[0] if created else None
     )
@@ -251,7 +240,7 @@ async def list_fallacies(
     debate = await get_debate(db, user, debate_id)
     rows = (
         await db.execute(
-            select(Fallacy, Agent.name)
+            select(Fallacy, Agent.name).options(selectinload(Fallacy.message))
             .join(DebateMessage, DebateMessage.id == Fallacy.message_id)
             .join(DebateRound, DebateRound.id == DebateMessage.round_id)
             .join(Agent, Agent.id == Fallacy.agent_id)
@@ -334,7 +323,7 @@ async def _load_supporting_context(
 
 
 async def evaluate_argument(
-    db: AsyncSession, user: User, message_id: UUID
+    db: AsyncSession, user: User, message_id: UUID, *, force: bool = False
 ) -> tuple[ArgumentEvaluation, str]:
     """Evaluate one message's argument quality and persist the result.
 
@@ -342,6 +331,11 @@ async def evaluate_argument(
     row instead of appending duplicates.
     """
     analysis = await get_message_for_user(db, user, message_id)
+    await _message_lock(db, message_id)
+    stored = (await db.execute(select(ArgumentEvaluation).where(
+        ArgumentEvaluation.message_id == message_id))).scalars().first()
+    if stored is not None and not force:
+        return stored, analysis.agent_name
     supporting_context = await _load_supporting_context(db, message_id)
 
     output = await ArgumentEvaluationService().evaluate(
@@ -351,14 +345,43 @@ async def evaluate_argument(
         analysis.previous_content,
         supporting_context,
     )
+    if output.responsiveness is None or output.completeness is None:
+        from app.services.argument_evaluation import ArgumentEvaluationError
+        raise ArgumentEvaluationError("The model omitted required rubric criteria. Retry evaluation.")
+
+    from app.services import judge_rubric
+    verdicts = (await db.execute(select(ClaimVerification.verdict).join(
+        Claim, Claim.id == ClaimVerification.claim_id).where(Claim.message_id == message_id))).scalars().all()
+    evidence_ids = (await db.execute(select(Evidence.id).join(Claim).where(
+        Claim.message_id == message_id))).scalars().all()
+    checks = (await db.execute(select(Fallacy).where(Fallacy.message_id == message_id))).scalars().all()
+    risk = None if not checks else judge_rubric.compute_fallacy_risk(
+        [(f.severity, f.confidence) for f in checks if f.fallacy_type != "no_fallacy"], 1)
+    if checks and all(f.fallacy_type == "no_fallacy" for f in checks):
+        risk = 0.0
+    dimensions = dict(logical_soundness=output.logical_soundness,
+        evidence_quality=output.evidence_score if evidence_ids else None,
+        factual_support=judge_rubric.compute_factual_support(list(verdicts)),
+        responsiveness=output.responsiveness, relevance=output.relevance_score,
+        effectiveness=output.effectiveness_score, completeness=output.completeness,
+        fallacy_risk=risk)
 
     values = {
         "logical_soundness": output.logical_soundness,
         "evidence_score": output.evidence_score,
         "relevance_score": output.relevance_score,
         "effectiveness_score": output.effectiveness_score,
-        "overall_score": output.overall_score,
+        "overall_score": judge_rubric.round_final(judge_rubric.compute_agent_score(dimensions)),
         "explanation": output.explanation,
+        "responsiveness": output.responsiveness,
+        "completeness": output.completeness,
+        "factual_support": dimensions["factual_support"],
+        "fallacy_risk": risk,
+        "criterion_scores": dimensions,
+        "rubric_version": judge_rubric.RUBRIC_VERSION,
+        "strengths": output.strengths,
+        "weaknesses": output.weaknesses,
+        "evaluated_at": datetime.now(timezone.utc),
     }
 
     existing = (
@@ -386,6 +409,13 @@ async def evaluate_argument(
     await db.commit()
     await db.refresh(existing)
     return existing, analysis.agent_name
+
+
+async def _message_lock(db: AsyncSession, message_id: UUID) -> None:
+    """Serialize manual and batch changes across workers, before provider calls."""
+    message_id = UUID(str(message_id))
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"),
+                     {"key": int.from_bytes(message_id.bytes[:8], "big", signed=True)})
 
 
 async def list_evaluations(

@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -19,6 +19,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["evaluations"])
 
 
+@router.post("/debates/{debate_id}/evaluations")
+async def evaluate_all(debate_id: UUID, current_user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_db)):
+    from app.services.message_pipeline import run_message_batch
+    try:
+        return await run_message_batch(db, current_user, debate_id, stage="evaluation")
+    except debate_service.DebateNotFoundError:
+        raise HTTPException(404, "Debate not found")
+    except argument_analysis_service.ArgumentAnalysisValidationError as exc:
+        raise HTTPException(400, str(exc))
+
+
 def _evaluation_response(evaluation, agent_name: str) -> ArgumentEvaluationResponse:
     return ArgumentEvaluationResponse(
         id=evaluation.id,
@@ -32,6 +44,9 @@ def _evaluation_response(evaluation, agent_name: str) -> ArgumentEvaluationRespo
         effectiveness_score=evaluation.effectiveness_score,
         overall_score=evaluation.overall_score,
         explanation=evaluation.explanation,
+        **{key: getattr(evaluation, key) for key in (
+            "responsiveness", "completeness", "factual_support", "fallacy_risk", "criterion_scores",
+            "rubric_version", "strengths", "weaknesses", "evaluated_at")},
         created_at=evaluation.created_at,
     )
 
@@ -42,12 +57,13 @@ def _evaluation_response(evaluation, agent_name: str) -> ArgumentEvaluationRespo
 )
 async def evaluate_message(
     message_id: UUID,
+    force: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         evaluation, agent_name = await argument_analysis_service.evaluate_argument(
-            db, current_user, message_id
+            db, current_user, message_id, force=force
         )
     except argument_analysis_service.MessageNotFoundError:
         raise HTTPException(

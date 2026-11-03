@@ -33,3 +33,4 @@ Thumbs.db
 
 # Alembic
 backend/alembic/versions/*.pyc
+backend/test-results/

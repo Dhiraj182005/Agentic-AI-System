@@ -26,8 +26,9 @@ class DebateEventManager:
     Only the DebateEngine talks to this object; agents never see WebSockets.
     """
 
-    def __init__(self, manager: ConnectionManager | None = None) -> None:
+    def __init__(self, manager: ConnectionManager | None = None, *, bind=None) -> None:
         self.manager = manager if manager is not None else connection_manager
+        self.bind = bind
 
     async def emit(self, debate_id, event_type: str, data: dict | None = None) -> dict:
         event = {
@@ -36,6 +37,22 @@ class DebateEventManager:
             "timestamp": _timestamp(),
             "data": data or {},
         }
+        if self.bind is not None:
+            from sqlalchemy import update
+            from sqlalchemy.ext.asyncio import async_sessionmaker
+            from uuid import UUID
+            from app.models.execution_event import ExecutionEvent
+            from app.models.debate import Debate
+            async with async_sessionmaker(self.bind, expire_on_commit=False)() as db:
+                row = ExecutionEvent(debate_id=UUID(str(debate_id)), event_type=event_type, data=data or {})
+                db.add(row)
+                phase = {"debate_started": "running", "debate_completed": "analyzing",
+                         "debate_failed": "failed", "debate_cancelled": "cancelled"}.get(event_type)
+                if phase:
+                    await db.execute(update(Debate).where(Debate.id == row.debate_id).values(execution_state=phase))
+                await db.commit()
+                await db.refresh(row)
+                event.update(id=str(row.id), sequence=row.id, timestamp=row.created_at.isoformat())
         await self.manager.broadcast(str(debate_id), event)
         return event
 
@@ -69,6 +86,7 @@ class DebateEventManager:
         message_id,
         agent,
         content: str,
+        structured: dict | None = None,
     ) -> dict:
         return await self.emit(
             debate_id,
@@ -80,6 +98,7 @@ class DebateEventManager:
                 "message_id": str(message_id),
                 "agent": _agent_payload(agent),
                 "content": content,
+                "structured": structured,
             },
         )
 

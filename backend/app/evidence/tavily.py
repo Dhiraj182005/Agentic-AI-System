@@ -2,6 +2,7 @@ import logging
 from urllib.parse import urlparse
 
 import httpx
+from app.evidence.retry import request_with_retry
 
 from app.core.config import get_settings
 from app.evidence.base import (
@@ -59,7 +60,7 @@ class TavilyEvidenceProvider(EvidenceProvider):
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
         try:
-            response = await self._post(payload, headers)
+            response = await request_with_retry(lambda: self._post(payload, headers))
         except httpx.TimeoutException as exc:
             logger.error("Tavily search timed out")
             raise EvidenceTimeoutError("The evidence provider timed out") from exc
@@ -117,7 +118,7 @@ class TavilyEvidenceProvider(EvidenceProvider):
             if not isinstance(item, dict):
                 continue
             url = str(item.get("url") or "").strip()
-            if not url:
+            if not url or urlparse(url).scheme not in ("http", "https") or not urlparse(url).netloc:
                 continue
             title = str(item.get("title") or "").strip() or url
             snippet = str(item.get("content") or item.get("snippet") or "").strip()

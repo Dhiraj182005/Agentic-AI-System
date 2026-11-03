@@ -25,3 +25,12 @@ class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
     created_at: datetime
+    is_demo: bool = False
+
+
+class DemoLoginResponse(BaseModel):
+    """Demo credentials for the login page; empty when demo login is off."""
+
+    enabled: bool
+    email: str | None = None
+    password: str | None = None

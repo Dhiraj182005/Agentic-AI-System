@@ -10,6 +10,7 @@ from app.models.evidence import Evidence
 from app.models.fallacy import Fallacy
 from app.models.argument_evaluation import ArgumentEvaluation
 from app.models.judge import DebateJudgment
+from app.models.verdict import DebateVerdict
 
 __all__ = [
     "User",
@@ -24,4 +25,6 @@ __all__ = [
     "Fallacy",
     "ArgumentEvaluation",
     "DebateJudgment",
+    "DebateVerdict",
 ]
+from app.models.execution_event import ExecutionEvent

@@ -1,0 +1,256 @@
+# MAVES — PROFESSIONAL UI/UX + DEBATE CONCLUSION PDF REPORT
+
+Improve my existing MAVES (AI Debate Arena) project before final testing and deployment.
+
+## Objective
+
+Deliver two improvements:
+
+1. A professional, consistent, easy-to-navigate AI debate application.
+2. A downloadable PDF report containing the final conclusion and supporting analysis for a completed debate.
+
+## 1. Inspect Before Coding
+
+Inspect the existing React frontend, FastAPI backend, authentication, debate details page, transcript, claims, evidence, claim verification, fallacy analysis, argument evaluation, judgment, and analytics modules.
+
+Determine which features are actually implemented.
+
+Reuse existing APIs, database models, scoring logic, and UI components. Do not recreate or simulate missing features.
+
+## 2. Professional UI and Navigation
+
+Refine the interface using the existing React, TypeScript, and Tailwind CSS stack.
+
+Create a cohesive visual system with:
+- Professional typography and consistent spacing
+- Clean page backgrounds and cards
+- Consistent buttons, forms, badges, and tables
+- Responsive layouts
+- Accessible contrast and keyboard navigation
+- Loading, error, and empty states
+
+Use a consistent sidebar or navigation layout for:
+- Dashboard
+- New Debate
+- My Debates
+- Analytics, if implemented
+- Reports or debate results
+
+Include a clear active navigation state and accessible mobile navigation.
+
+Do not add unnecessary animation, excessive gradients, or decorative components that reduce readability.
+
+## 3. Improve Debate Creation
+
+Make the debate creation workflow straightforward.
+
+- Provide a clear topic input.
+- Make Manual and Auto agent selection easy to understand.
+- Preserve the working topic-aware automatic agent selection.
+- Show recommended agents and selection reasons.
+- Allow manual customization.
+- Clearly display validation errors and loading states.
+- Prevent duplicate submissions.
+- Preserve the existing backend debate creation and authorization behavior.
+
+Do not modify the agent selection algorithm unless a verified bug requires it.
+
+## 4. Redesign the Debate Results Experience
+
+Organize the debate detail and results page into clear sections:
+
+1. **Overview** — topic, status, date, and participants.
+2. **Final Conclusion** — judge's summary and winner/tie/inconclusive outcome.
+3. **Agent Comparison** — scores, rubric breakdown, strengths, and weaknesses.
+4. **Claims and Verification** — claims and their stored verdicts.
+5. **Evidence Sources** — retrieved evidence and source metadata.
+6. **Fallacy and Argument Analysis** — stored results when available.
+7. **Transcript** — the original ordered debate messages.
+8. **Limitations and Methodology** — missing data, scoring criteria, and evaluation caveats.
+
+Use tabs, section navigation, or expandable panels where appropriate.
+
+Keep the most important result visible first. Make detailed evidence and analysis accessible without overwhelming the page.
+
+Never label an insufficient-evidence claim as false or present the judge's winner as objectively correct.
+
+If a module has not been implemented or its results are missing, show a clear unavailable state instead of fake results.
+
+## 5. Downloadable PDF Report
+
+Add a **Download PDF Report** action to the completed debate's results page.
+
+Inspect the existing backend dependencies and choose a suitable PDF-generation approach compatible with the project. Prefer a backend-generated PDF so the report uses trusted, persisted data and the existing authorization model.
+
+Add an endpoint consistent with existing API conventions, for example:
+
+`GET /api/v1/debates/{debate_id}/report.pdf`
+
+Reuse existing response and error-handling patterns.
+
+The endpoint must:
+- Require authentication.
+- Verify that the authenticated user owns the debate.
+- Load the actual saved debate and analysis data.
+- Return a valid PDF with the appropriate `application/pdf` content type.
+- Use a safe, meaningful filename.
+- Avoid writing permanent temporary files unnecessarily.
+- Handle missing judgments and incomplete analyses gracefully.
+- Never expose another user's debate or report.
+
+Use the framework's appropriate binary/file response mechanism and document the endpoint.
+
+### Required report structure
+
+Create a polished, professional report with the following sections when the corresponding data exists:
+
+**Cover / Report Header**
+- MAVES — AI Debate Arena
+- Debate topic
+- Report generation date
+- Debate ID or reference
+- Debate status
+
+**1. Executive Summary**
+- The saved judge's conclusion
+- Winner, tie, or inconclusive outcome, if a judgment exists
+- Overall score, if available
+- A concise statement of important limitations
+
+**2. Debate Overview**
+- Topic
+- Participating agents and roles
+- Number of rounds
+- Number of messages
+- Relevant timestamps
+
+**3. Final Judgment and Agent Comparison**
+- Final saved outcome
+- Agent scores
+- Actual scoring rubric and dimensions
+- Strengths and weaknesses
+- Judge's explanation
+- Scoring limitations
+
+**4. Key Claims and Verification**
+- Claim text
+- Verification verdict
+- Confidence level
+- Explanation
+- Available evidence summary
+
+**5. Evidence Sources**
+- Source title
+- URL when available
+- Source metadata when stored
+- Associated claim when identifiable
+
+**6. Fallacy and Argument Quality**
+- Detected fallacies, severity, confidence, and explanation
+- Argument evaluation scores and explanations
+- Include this section only when stored results exist
+
+**7. Conclusion and Limitations**
+- Concise conclusion based on the saved judgment
+- Important supported, contradicted, and insufficient-evidence findings
+- Missing verification or analysis data
+- A clear disclaimer that AI judgments are rubric-based assessments, not proof of objective truth
+
+**8. Methodology**
+- The scoring formula and weights actually configured in the application, when applicable
+- The evidence retrieval and verification approach actually implemented
+- Relevant evaluation limitations
+
+### PDF quality requirements
+
+- Use professional typography, margins, and section hierarchy.
+- Include page numbers.
+- Keep tables readable and prevent content from overflowing page boundaries.
+- Handle long claims, URLs, and agent explanations gracefully.
+- Add headers or footers identifying the report and debate.
+- Use clickable source URLs when supported.
+- Handle Unicode and special characters safely.
+- Avoid empty sections or fabricated content.
+- Clearly label unavailable analysis instead of inventing it.
+- Do not include API keys, passwords, JWTs, or internal stack traces.
+- Do not claim the report is independently peer-reviewed or scientifically validated.
+
+The report should be generated from the saved database state. Do not run another debate or make a new LLM call just to produce the PDF.
+
+If a judgment does not exist, the report may still contain the debate overview, transcript summary based only on available stored data, claims, and evidence. Clearly state that no final judgment has been generated. Never fabricate a conclusion.
+
+## 6. Frontend Download Integration
+
+Implement the PDF download using the existing centralized API client.
+
+Requirements:
+- Display the action only when the user can access the debate.
+- Show a loading state during generation.
+- Download the returned binary as a PDF with a meaningful filename.
+- Handle expired authentication, missing reports, authorization errors, and server failures.
+- Release any temporary browser object URLs after use.
+- Prevent repeated download requests while one is already running.
+- Do not expose credentials in the download URL.
+
+## 7. Testing
+
+Add tests using the existing testing framework.
+
+Verify:
+- A completed debate with a judgment generates a valid PDF.
+- A debate without a judgment is handled honestly.
+- Missing optional analyses do not crash report generation.
+- Long text and Unicode characters are handled.
+- The PDF response has the correct content type and filename.
+- Unauthorized users cannot download another user's report.
+- Missing debate IDs return appropriate errors.
+- The report reflects persisted data.
+- The report does not trigger a new debate or LLM call.
+- Frontend download, loading, and error states work correctly.
+- Existing debate, claim, evidence, verification, judgment, and analytics tests remain functional.
+
+Mock external services where needed. Do not require real Groq or Tavily requests for PDF tests.
+
+Run the relevant tests and report the actual results.
+
+## 8. Documentation
+
+Update the README and API documentation with:
+- The new UI sections
+- PDF report contents
+- The report endpoint
+- Required dependencies
+- How to download a report
+- How missing judgment data is handled
+- Known limitations
+
+Preserve `.env.example` and never include secrets.
+
+## 9. Strict Constraints
+
+- Implement only this UI/UX and PDF report enhancement.
+- Do not start the final testing/deployment module yet.
+- Do not rebuild the debate engine.
+- Do not change the scoring formula.
+- Do not add Google Fact Check API integration.
+- Do not add another LLM provider.
+- Do not introduce a new queue system.
+- Do not fabricate conclusions, scores, claims, or sources.
+- Do not break topic-aware agent selection.
+- Do not change authentication or ownership rules unnecessarily.
+- Do not delete existing migrations or `.env.example`.
+- Avoid unrelated refactoring.
+
+## 10. Final Report
+
+When finished, provide:
+- Files created and modified
+- UI improvements implemented
+- PDF generation method and dependencies
+- Endpoint and authorization behavior
+- Report sections implemented
+- Tests actually executed and results
+- Manual verification steps
+- Known limitations
+
+Stop after completing this enhancement.

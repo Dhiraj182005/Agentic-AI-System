@@ -1,4 +1,5 @@
 import request from './api'
+import type { VerdictPosition } from './verdict'
 
 export interface StatusCount {
   status: string
@@ -17,6 +18,7 @@ export interface DashboardSummary {
   verified_claims: number
   unverified_claims: number
   debates_with_judgment: number
+  debates_with_verdict: number
   completion_rate: number | null
   status_distribution: StatusCount[]
 }
@@ -96,6 +98,11 @@ export interface RecentDebateItem {
   message_count: number
   has_verification: boolean
   has_judgment: boolean
+  verdict: {
+    position: VerdictPosition
+    answer: string
+    confidence: string
+  } | null
 }
 
 export interface RecentDebates {

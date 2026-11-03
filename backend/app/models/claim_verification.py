@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
 
-VERDICTS = ("supported", "contradicted", "insufficient_evidence")
+VERDICTS = ("supported", "contradicted", "partially_supported", "insufficient_evidence")
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 
 

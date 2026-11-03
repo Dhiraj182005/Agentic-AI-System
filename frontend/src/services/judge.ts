@@ -10,6 +10,8 @@ export interface AgentDimensions {
   effectiveness: number | null
   completeness: number | null
   fallacy_risk: number | null
+  /** Rubric v2; absent on judgments made with rubric v1. */
+  responsiveness?: number | null
 }
 
 export interface AgentScoreCard {
@@ -41,6 +43,8 @@ export interface Judgment {
   limitations: string[] | null
   scoring_rubric: Record<string, unknown>
   agent_scores: AgentScoreCard[]
+  /** New claims, verifications or analyses were stored after this judgment. */
+  stale: boolean
   created_at: string
   updated_at: string
 }
@@ -48,15 +52,16 @@ export interface Judgment {
 export const OUTCOME_LABELS: Record<JudgmentOutcome, string> = {
   winner: 'Winner Decided',
   tie: 'Tie',
-  inconclusive: 'Inconclusive',
+  inconclusive: 'No ranking',
 }
 
 export const DIMENSION_LABELS: Record<keyof AgentDimensions, string> = {
   logical_soundness: 'Logical Soundness',
   evidence_quality: 'Evidence Quality',
   factual_support: 'Factual Support',
+  responsiveness: 'Responsiveness',
   relevance: 'Relevance',
-  effectiveness: 'Effectiveness',
+  effectiveness: 'Clarity',
   completeness: 'Completeness',
   fallacy_risk: 'Fallacy Risk',
 }
@@ -65,6 +70,7 @@ export const DIMENSION_KEYS: (keyof AgentDimensions)[] = [
   'logical_soundness',
   'evidence_quality',
   'factual_support',
+  'responsiveness',
   'relevance',
   'effectiveness',
   'completeness',
@@ -78,7 +84,7 @@ export function outcomeLabel(outcome: string): string {
   )
 }
 
-export function dimensionDisplay(value: number | null): string {
+export function dimensionDisplay(value: number | null | undefined): string {
   if (value === null || value === undefined) return 'Unavailable'
   return Number.isInteger(value) ? `${value}/10` : `${value.toFixed(1)}/10`
 }
@@ -87,10 +93,15 @@ export function overallDisplay(score: number): string {
   return Number.isInteger(score) ? `${score}/10` : `${score.toFixed(2)}/10`
 }
 
-export async function generateJudgment(debateId: string): Promise<Judgment> {
-  return request<Judgment>(`/api/v1/debates/${debateId}/judge`, {
-    method: 'POST',
-  }, true)
+export async function generateJudgment(
+  debateId: string,
+  regenerate = false,
+): Promise<Judgment> {
+  return request<Judgment>(
+    `/api/v1/debates/${debateId}/judge${regenerate ? '?regenerate=true' : ''}`,
+    { method: 'POST' },
+    true,
+  )
 }
 
 export async function getJudgment(debateId: string): Promise<Judgment> {

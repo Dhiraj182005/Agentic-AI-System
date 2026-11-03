@@ -16,6 +16,7 @@ class AgentDimensionScores(BaseModel):
     effectiveness: float | None = None
     completeness: float | None = None
     fallacy_risk: float | None = None
+    responsiveness: float | None = None
 
 
 class AgentScoreCard(BaseModel):
@@ -33,6 +34,8 @@ class AgentScoreCard(BaseModel):
     fallacy_impact_assessment: str = ""
     confidence: str = "medium"
     limitations: list[str] = []
+    # Model that scored this agent (may be a daily-quota fallback model).
+    model: str | None = None
 
 
 class JudgmentResponse(BaseModel):
@@ -47,5 +50,8 @@ class JudgmentResponse(BaseModel):
     limitations: list[str] | None = None
     scoring_rubric: dict = {}
     agent_scores: list[AgentScoreCard] = []
+    # True when claims, verifications, fallacy checks or evaluations were
+    # added after this judgment: re-run it to include them.
+    stale: bool = False
     created_at: datetime
     updated_at: datetime

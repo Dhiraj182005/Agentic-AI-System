@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { register as apiRegister } from '../services/auth'
 import { apiErrorMessage } from '../services/api'
+import AuthLayout from '../components/ui/AuthLayout'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -36,12 +37,7 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4 py-10">
-      <div className="max-w-md w-full rounded-2xl border border-gray-800 bg-gray-900 p-8 shadow-xl">
-        <h1 className="text-2xl font-bold mb-6 text-center">AI Debate Arena</h1>
-        <h2 className="text-lg font-semibold mb-4 text-center text-gray-300">
-          Create Account
-        </h2>
+    <AuthLayout title="Create account" subtitle="Start running multi-agent debates in minutes.">
 
         {error && (
           <p role="alert" className="alert-error mb-4 text-center">
@@ -111,7 +107,6 @@ export default function Register() {
             Login
           </Link>
         </p>
-      </div>
-    </div>
+    </AuthLayout>
   )
 }

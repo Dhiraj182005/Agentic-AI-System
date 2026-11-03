@@ -40,6 +40,8 @@ class Claim(Base):
         index=True,
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_claim_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("claims.id", ondelete="SET NULL"), index=True)
     claim_type: Mapped[str] = mapped_column(
         Enum(
             *CLAIM_TYPES,
@@ -49,6 +51,17 @@ class Claim(Base):
         nullable=False,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Last evidence search attempt (NULL = never searched). Distinguishes
+    # "searched, no sources" from "not searched yet".
+    evidence_retrieved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Google Fact Check search outcome: matched / no_match (searched) or
+    # unavailable / failed (not searched; retried on the next analysis run).
+    fact_check_status: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fact_check_searched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

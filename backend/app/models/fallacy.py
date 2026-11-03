@@ -16,8 +16,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.database import Base
 
 # Controlled vocabulary for detected fallacies. "no_fallacy" is the value the
-# analysis model must prefer when the evidence for a fallacy is weak; real
-# fallacy rows are never stored with it (see argument_analysis_service).
+# analysis model must prefer when the evidence for a fallacy is weak; clean
+# results are persisted too (see argument_analysis_service).
 FALLACY_TYPES = (
     "ad_hominem",
     "straw_man",
@@ -30,6 +30,7 @@ FALLACY_TYPES = (
     "red_herring",
     "false_cause",
     "bandwagon",
+    "cherry_picking",
     "loaded_question",
     "tu_quoque",
     "no_fallacy",
@@ -43,7 +44,7 @@ FALLACY_SEVERITIES = ("low", "medium", "high")
 class Fallacy(Base):
     """A detected logical/rhetorical fallacy in one debate message.
 
-    Only real fallacies are persisted (never "no_fallacy"), at most one row
+    Explicit clean outcomes are persisted too, at most one row
     per message and fallacy type. A detected fallacy is a statement about the
     argument's reasoning structure - it is not a truth value for any claim.
     """

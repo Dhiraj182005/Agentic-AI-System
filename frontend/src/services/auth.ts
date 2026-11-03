@@ -4,6 +4,14 @@ export interface User {
   id: string
   email: string
   created_at: string
+  is_demo?: boolean
+}
+
+/** Demo credentials advertised by the backend; disabled unless configured. */
+export interface DemoLogin {
+  enabled: boolean
+  email: string | null
+  password: string | null
 }
 
 export interface TokenResponse {
@@ -25,6 +33,10 @@ export async function login(email: string, password: string): Promise<TokenRespo
     body: JSON.stringify({ email, password }),
   })
   return res
+}
+
+export async function getDemoLogin(): Promise<DemoLogin> {
+  return request<DemoLogin>('/api/v1/auth/demo')
 }
 
 export async function fetchCurrentUser(): Promise<User> {

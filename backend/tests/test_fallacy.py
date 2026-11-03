@@ -240,6 +240,8 @@ def evaluation_json(
             "relevance_score": relevance,
             "effectiveness_score": effectiveness,
             "overall_score": overall,
+            "responsiveness": 8, "completeness": 8,
+            "strengths": ["Clear"], "weaknesses": ["Limited detail"],
             "explanation": explanation,
         }
     )
@@ -499,7 +501,7 @@ async def test_message_fallacy_analysis_with_mocked_llm(client):
     print("POST message fallacy analysis persists a real fallacy: PASSED")
 
 
-async def test_no_fallacy_not_persisted(client):
+async def test_no_fallacy_persisted(client):
     token = await register_and_login(client, unique_email("nofallacy"))
     debate = await seed_completed_debate(client, token)
     fake = FakeLLM(
@@ -522,19 +524,19 @@ async def test_no_fallacy_not_persisted(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["fallacy_type"] == "no_fallacy"
-    assert body["id"] is None
+    assert body["id"] is not None
     assert body["evidence_span"] is None
     assert "clear" in body["explanation"].lower()
 
-    assert await fetch_fallacies(debate["id"]) == []
+    assert len(await fetch_fallacies(debate["id"])) == 1
 
     get_resp = await client.get(
         f"/api/v1/debates/{debate['id']}/fallacies", headers=auth(token)
     )
     assert get_resp.status_code == 200, get_resp.text
-    assert get_resp.json()["fallacies"] == []
+    assert get_resp.json()["fallacies"][0]["fallacy_type"] == "no_fallacy"
 
-    print("no_fallacy result shown but never persisted: PASSED")
+    print("no_fallacy result persists across refresh: PASSED")
 
 
 async def test_debate_fallacy_analysis_endpoint(client):
@@ -626,11 +628,11 @@ async def test_fallacy_provider_failure_returns_502(client):
             f"/api/v1/debates/{debate['id']}/fallacies/analyze",
             headers=auth(token),
         )
-    assert resp.status_code == 502, resp.text
-    assert "internal error" not in resp.json()["detail"].lower()
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["failures"] and resp.json()["analyzed_count"] == 0
     assert await fetch_fallacies(debate["id"]) == []
 
-    print("fallacy provider outage returns 502 atomically: PASSED")
+    print("fallacy provider outage reports individual failures: PASSED")
 
 
 async def test_fallacy_debate_ownership(client):
@@ -820,7 +822,7 @@ async def test_post_evaluation_with_mocked_llm(client):
     assert body["evidence_score"] == 7.0
     assert body["relevance_score"] == 9.0
     assert body["effectiveness_score"] == 8.0
-    assert body["overall_score"] == 8.0
+    assert body["overall_score"] == 8.17
     assert body["explanation"]
     assert body["message_id"] == message_id
     assert body["agent_name"]
@@ -829,7 +831,7 @@ async def test_post_evaluation_with_mocked_llm(client):
 
     stored = await fetch_evaluations(debate["id"])
     assert len(stored) == 1
-    assert stored[0].overall_score == 8.0
+    assert stored[0].overall_score == 8.17
 
     print("POST evaluation validates, persists and returns scores: PASSED")
 
@@ -851,14 +853,14 @@ async def test_evaluation_duplicate_protection(client):
         return_value=FakeLLM(evaluation_json(overall=8.0)),
     ):
         second = await client.post(
-            f"/api/v1/messages/{message_id}/evaluation", headers=auth(token)
+            f"/api/v1/messages/{message_id}/evaluation?force=true", headers=auth(token)
         )
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
 
     stored = await fetch_evaluations(debate["id"])
     assert len(stored) == 1, "one evaluation row per message"
-    assert stored[0].overall_score == 8.0, "re-evaluation updates the row"
+    assert stored[0].overall_score == 8.17, "re-evaluation updates the row"
     assert first.json()["id"] == second.json()["id"]
 
     print("re-evaluation updates a single row (no duplicates): PASSED")
@@ -1098,7 +1100,7 @@ async def main():
 
         await test_fallacy_model_and_unique_constraints(client)
         await test_message_fallacy_analysis_with_mocked_llm(client)
-        await test_no_fallacy_not_persisted(client)
+        await test_no_fallacy_persisted(client)
         await test_debate_fallacy_analysis_endpoint(client)
         await test_fallacy_duplicate_protection(client)
         await test_fallacy_invalid_llm_output_returns_502(client)
@@ -1121,6 +1123,9 @@ async def main():
 
     await teardown()
     print("\nAll Module 10 (fallacy detection + argument evaluation) tests PASSED!")
+
+    if os.environ.get("MAVES_FOCUSED_TESTS") == "1":
+        return
 
     print("\nRegression: Module 2 (authentication)...")
     from tests import test_auth

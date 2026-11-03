@@ -19,13 +19,15 @@ logger = logging.getLogger(__name__)
 # max_tokens (see claim_extraction). Detection runs on a single message with
 # a short prompt, so 16000 leaves comfortable headroom for reasoning plus the
 # JSON answer without risking an empty completion.
-FALLACY_MAX_TOKENS = 16000
+FALLACY_MAX_TOKENS = 4000
 MAX_EXPLANATION_LENGTH = 600
 MAX_SPAN_LENGTH = 500
 MAX_CONTEXT_CHARS = 600
 MAX_MESSAGE_CHARS = 4000
 
 FALLACY_TYPE_ALIASES = {
+    "cherry_picking": "cherry_picking",
+    "cherry picking": "cherry_picking",
     "ad_hominem": "ad_hominem",
     "ad hominem": "ad_hominem",
     "adhominem": "ad_hominem",
@@ -330,8 +332,9 @@ class FallacyDetectionService:
             )
             if isinstance(exc, (LLMProviderAPIError, LLMTimeoutError)):
                 raise FallacyDetectionError(
-                    "Fallacy analysis failed because the language model "
-                    "provider did not respond"
+                    # Keep the provider's specific, user-safe reason (e.g. which
+                    # rate limit or quota) instead of a generic "did not respond".
+                    f"Fallacy analysis failed: {exc.user_message}"
                 ) from exc
             raise FallacyDetectionError(
                 "Fallacy analysis failed because the language model returned "

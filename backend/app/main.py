@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.core.logging import install_redaction, setup_logging
+from app.core.observability import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.db.redis import redis_client
 from app.api.health import router as health_router
 from app.api.auth import router as auth_router
@@ -17,6 +18,8 @@ from app.api.claims import router as claims_router
 from app.api.fallacies import router as fallacies_router
 from app.api.evaluations import router as evaluations_router
 from app.api.judge import router as judge_router
+from app.api.verdict import router as verdict_router
+from app.api.execution import router as execution_router
 from app.api.analytics import router as analytics_router
 from app.api.websocket import router as websocket_router
 
@@ -60,7 +63,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # The PDF report endpoint answers with a Content-Disposition filename; the
+    # frontend runs on a different origin and can only read exposed headers.
+    expose_headers=["Content-Disposition", REQUEST_ID_HEADER],
 )
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(health_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
@@ -71,6 +78,8 @@ app.include_router(claims_router, prefix="/api/v1")
 app.include_router(fallacies_router, prefix="/api/v1")
 app.include_router(evaluations_router, prefix="/api/v1")
 app.include_router(judge_router, prefix="/api/v1")
+app.include_router(verdict_router, prefix="/api/v1")
+app.include_router(execution_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
 # WebSocket routes carry their own /ws path and need no /api/v1 prefix.
 app.include_router(websocket_router)

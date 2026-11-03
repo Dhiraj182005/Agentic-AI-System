@@ -51,9 +51,14 @@ def install_redaction() -> None:
 
 
 def setup_logging() -> None:
+    from app.core.observability import RequestIdFilter
+
+    handler = logging.StreamHandler(sys.stdout)
+    # Handler-level filter: every record written here carries request_id.
+    handler.addFilter(RequestIdFilter())
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        format="%(asctime)s | %(levelname)s | %(name)s | req=%(request_id)s | %(message)s",
+        handlers=[handler],
     )
     install_redaction()

@@ -3,6 +3,8 @@ import { API_URL, getStoredToken } from './api'
 export type WebSocketState = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface DebateEvent {
+  id?: string
+  sequence?: number
   type: string
   debate_id: string
   timestamp: string
@@ -13,6 +15,7 @@ export interface DebateEvent {
     message_type?: string
     message_id?: string
     content?: string
+    structured?: import('./debates').StructuredTurn | null
     agent?: { id: string; name: string; role: string }
     message?: string
   }
@@ -35,6 +38,7 @@ export class DebateWebSocketClient {
   private attempts = 0
   private stopped = false
   private currentState: WebSocketState = 'disconnected'
+  private lastSequence = 0
 
   constructor(
     private readonly debateId: string,
@@ -73,12 +77,18 @@ export class DebateWebSocketClient {
     this.socket = socket
 
     socket.onopen = () => {
+      if (this.socket !== socket) return
       this.attempts = 0
       this.setState('connected')
     }
     socket.onmessage = (message: MessageEvent) => {
       try {
         const event = JSON.parse(String(message.data)) as DebateEvent
+        if (this.socket !== socket || event.debate_id !== this.debateId) return
+        if (typeof event.sequence === 'number') {
+          if (event.sequence <= this.lastSequence) return
+          this.lastSequence = event.sequence
+        }
         if (event && typeof event.type === 'string') {
           this.handlers.onEvent(event)
         }
@@ -90,6 +100,7 @@ export class DebateWebSocketClient {
       // A close event follows; reconnection is handled there.
     }
     socket.onclose = (event: CloseEvent) => {
+      if (this.socket !== socket) return
       this.socket = null
       if (this.stopped) {
         this.setState('disconnected')

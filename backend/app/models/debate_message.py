@@ -10,7 +10,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -20,6 +20,7 @@ class DebateMessage(Base):
     """A single persisted agent message inside a debate round."""
 
     __tablename__ = "debate_messages"
+    claims_extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (
         UniqueConstraint("round_id", "turn_number", name="uq_debate_message_round_turn"),
     )
@@ -57,6 +58,9 @@ class DebateMessage(Base):
         nullable=False,
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # Validated structured turn (see orchestration/turn_format.py); NULL for
+    # older free-text messages.
+    structured: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

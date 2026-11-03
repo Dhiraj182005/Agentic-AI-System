@@ -472,7 +472,7 @@ async def test_claim_verification_counts(client):
     assert body["total_verifications"] == 1
     verdicts = {item["name"]: item["count"] for item in body["verdict_counts"]}
     assert list(verdicts.keys()) == list(CLAIM_VERDICTS)
-    assert verdicts == {"supported": 1, "contradicted": 0, "insufficient_evidence": 0}
+    assert verdicts == {"supported": 1, "contradicted": 0, "partially_supported": 0, "insufficient_evidence": 0}
     confidences = {item["name"]: item["count"] for item in body["confidence_counts"]}
     assert list(confidences.keys()) == list(CONFIDENCE_LEVELS)
     assert confidences == {"low": 0, "medium": 1, "high": 0}
@@ -725,6 +725,9 @@ async def main():
     await teardown()
     print("\nAll Module 12 (analytics dashboard) tests PASSED!")
 
+    if os.environ.get("MAVES_FOCUSED_TESTS") == "1":
+        return
+
     regressions = (
         ("Module 0 (foundation)", "tests.test_basic"),
         ("Module 2 (authentication)", "tests.test_auth"),
@@ -737,6 +740,9 @@ async def main():
         ),
         ("Module 6 (orchestration)", "tests.test_orchestration"),
         ("Module 11 (debate judge + overall scoring)", "tests.test_judge"),
+        ("Final UI (PDF conclusion report)", "tests.test_report"),
+        ("Final debate verdict", "tests.test_verdict"),
+        ("Demo login", "tests.test_demo"),
     )
     for label, module in regressions:
         print(f"\nRegression: {label}...")

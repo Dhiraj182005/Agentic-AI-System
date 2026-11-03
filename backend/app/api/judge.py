@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from app.services.debate_judge_service import (
     JudgeLLMError,
     JudgeNotCompletedError,
     JudgeNotFoundError,
+    current_judge_inputs,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/debates", tags=["judge"])
 
 
-def _to_response(judgment: DebateJudgment, debate: Debate) -> JudgmentResponse:
+async def _is_stale(db: AsyncSession, judgment: DebateJudgment, debate: Debate) -> bool:
+    stored = (judgment.scoring_rubric or {}).get("inputs")
+    if not stored:
+        return False  # judged before inputs were recorded
+    return stored != await current_judge_inputs(db, debate)
+
+
+def _to_response(
+    judgment: DebateJudgment, debate: Debate, stale: bool = False
+) -> JudgmentResponse:
     winner_name = None
     if judgment.winner_agent_id is not None:
         winner_name = next(
@@ -42,6 +52,7 @@ def _to_response(judgment: DebateJudgment, debate: Debate) -> JudgmentResponse:
         limitations=judgment.limitations,
         scoring_rubric=judgment.scoring_rubric or {},
         agent_scores=judgment.agent_scores or [],
+        stale=stale,
         created_at=judgment.created_at,
         updated_at=judgment.updated_at,
     )
@@ -61,13 +72,20 @@ async def _load_owned_debate(
 @router.post("/{debate_id}/judge", response_model=JudgmentResponse)
 async def judge_debate(
     debate_id,
+    regenerate: bool = Query(
+        False, description="Re-run the judgment (e.g. after new analysis was stored)"
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate (or return the existing) judgment for a completed debate."""
+    """Generate (or return the existing) judgment for a completed debate.
+
+    A failed run raises an error and stores nothing; with regenerate=true a
+    failure keeps the previous judgment.
+    """
     try:
         judgment = await DebateJudgeService().judge_debate(
-            db, current_user, debate_id
+            db, current_user, debate_id, regenerate=regenerate
         )
         debate = await _load_owned_debate(db, current_user, debate_id)
     except JudgeNotFoundError:
@@ -95,7 +113,7 @@ async def judge_debate(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not generate the judgment",
         )
-    return _to_response(judgment, debate)
+    return _to_response(judgment, debate, await _is_stale(db, judgment, debate))
 
 
 @router.get("/{debate_id}/judgment", response_model=JudgmentResponse)
@@ -121,4 +139,4 @@ async def get_judgment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Judgment not found",
         )
-    return _to_response(judgment, debate)
+    return _to_response(judgment, debate, await _is_stale(db, judgment, debate))

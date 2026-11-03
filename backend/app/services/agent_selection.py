@@ -244,6 +244,10 @@ class AgentSelectionService:
             logger.exception("Unexpected agent selection failure, using fallback")
         return fallback_select(topic, agents), SELECTION_SOURCE_FALLBACK
 
+    async def builtin_agents(self, db: AsyncSession) -> list[Agent]:
+        """Active built-in agents (the roster topic analysis chooses from)."""
+        return await self._active_agents(db)
+
     async def select_fallback(self, db: AsyncSession, topic: str) -> list[Agent]:
         """Deterministic topic-aware selection used during debate creation."""
         agents = await self._active_agents(db)

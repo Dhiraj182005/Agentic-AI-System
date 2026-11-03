@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 DEBATE_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
 
 # Claim verdicts and confidence levels (mirrors the verification enums).
-CLAIM_VERDICTS = ("supported", "contradicted", "insufficient_evidence")
+CLAIM_VERDICTS = ("supported", "contradicted", "partially_supported", "insufficient_evidence")
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 
 # Module 11 rubric dimensions plus the Module 10 overall score.
@@ -49,6 +49,7 @@ class SummaryResponse(BaseModel):
     verified_claims: int
     unverified_claims: int
     debates_with_judgment: int
+    debates_with_verdict: int = 0
     completion_rate: float | None = None
     status_distribution: list[StatusCount] = Field(default_factory=list)
 
@@ -118,6 +119,12 @@ class ArgumentQualityResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class RecentDebateVerdict(BaseModel):
+    position: str
+    answer: str
+    confidence: str
+
+
 class RecentDebateItem(BaseModel):
     id: str
     topic: str
@@ -128,6 +135,7 @@ class RecentDebateItem(BaseModel):
     message_count: int
     has_verification: bool
     has_judgment: bool
+    verdict: RecentDebateVerdict | None = None
 
 
 class RecentDebatesResponse(BaseModel):

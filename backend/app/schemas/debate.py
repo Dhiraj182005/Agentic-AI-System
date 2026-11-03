@@ -10,6 +10,7 @@ DebateMode = Literal["balanced", "pro_con"]
 MIN_AGENTS = 2
 MAX_AGENTS = 50
 MAX_TOPIC_LENGTH = 1000
+MAX_CONTEXT_LENGTH = 2000
 MIN_ROUNDS = 1
 MAX_ROUNDS = 10
 MAX_DOMAIN_TAGS = 10
@@ -18,12 +19,16 @@ MAX_DOMAIN_TAG_LENGTH = 50
 
 class DebateCreateRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=MAX_TOPIC_LENGTH)
+    context: str | None = Field(default=None, max_length=MAX_CONTEXT_LENGTH)
     expert_selection_mode: ExpertSelectionMode = "manual"
     agent_ids: list[str] = Field(default_factory=list, max_length=MAX_AGENTS)
     domain_tags: list[str] | None = Field(default=None, max_length=MAX_DOMAIN_TAGS)
     mode: DebateMode = "balanced"
     total_rounds: int = Field(default=3, ge=MIN_ROUNDS, le=MAX_ROUNDS)
     verify_evidence: bool = True
+    # AI specialist roles reviewed by the user (auto selection only); each is
+    # re-validated on the server before any debate-scoped agent is created.
+    specialists: list[dict] = Field(default_factory=list, max_length=6)
 
     @field_validator("topic")
     @classmethod
@@ -32,6 +37,14 @@ class DebateCreateRequest(BaseModel):
         if not value:
             raise ValueError("Topic cannot be empty or whitespace only")
         return value
+
+    @field_validator("context")
+    @classmethod
+    def _strip_context(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
     @field_validator("agent_ids")
     @classmethod
@@ -79,10 +92,17 @@ class DebateAgentResponse(BaseModel):
     name: str
     role: str
     description: str
+    # "builtin" or "dynamic" (debate-scoped AI specialist role).
+    source: str = "builtin"
+    definition: dict | None = None
 
 
 class RecommendAgentsRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=MAX_TOPIC_LENGTH)
+    context: str | None = Field(default=None, max_length=MAX_CONTEXT_LENGTH)
+    mode: DebateMode = "balanced"
+    # Opt in to topic analysis with dynamic AI specialist roles.
+    include_specialists: bool = False
 
     @field_validator("topic")
     @classmethod
@@ -100,11 +120,41 @@ class RecommendedAgent(BaseModel):
     reason: str
 
 
+class RecommendedSpecialist(BaseModel):
+    name: str
+    domain: str
+    subdomain: str = ""
+    expertise: str
+    debate_objective: str
+    instructions: list[str] = []
+    capabilities: list[str] = []
+    reason: str = ""
+
+
+class TopicAnalysisSummary(BaseModel):
+    main_domain: str
+    secondary_domains: list[str] = []
+    key_questions: list[str] = []
+    recommended_agent_count: int
+    specialists_rationale: str = ""
+
+
+class RejectedSpecialist(BaseModel):
+    name: str
+    reason: str
+
+
 class RecommendAgentsResponse(BaseModel):
     topic: str
     selection_mode: ExpertSelectionMode = "auto"
     selection_source: Literal["llm", "fallback"] = "llm"
     agents: list[RecommendedAgent]
+    # Only with include_specialists: the topic analysis, proposed AI
+    # specialist roles and any proposals rejected by validation.
+    analysis: TopicAnalysisSummary | None = None
+    specialists: list[RecommendedSpecialist] = []
+    rejected_specialists: list[RejectedSpecialist] = []
+    cached: bool = False
 
 
 class DebateResponse(BaseModel):
@@ -112,9 +162,11 @@ class DebateResponse(BaseModel):
 
     id: UUID
     topic: str
+    context: str | None = None
     expert_selection_mode: str
     domain_tags: list[str] | None
     status: str
+    execution_state: str = "created"
     mode: str
     total_rounds: int
     verify_evidence: bool
@@ -123,6 +175,7 @@ class DebateResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    failure_reason: str | None = None
 
 
 class DebateListResponse(BaseModel):
@@ -146,6 +199,7 @@ class TranscriptMessageResponse(BaseModel):
     agent: TranscriptAgentResponse
     message_type: str
     content: str
+    structured: dict | None = None
     created_at: datetime
 
 

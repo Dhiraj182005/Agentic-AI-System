@@ -29,10 +29,13 @@ async def test_seed_agents():
         await seed_agents(db)
         from sqlalchemy import select
         from app.models.agent import Agent
-        result = await db.execute(select(Agent))
+        # Built-in agents only: debate-scoped AI specialist roles are also
+        # Agent rows (source='dynamic') and must not change the seed.
+        result = await db.execute(select(Agent).where(Agent.debate_id.is_(None)))
         agents = result.scalars().all()
         print(f"Seeded agents: {[a.name for a in agents]}")
         assert len(agents) == 6
+        assert {a.source for a in agents} == {"builtin"}
 
 
 async def main():

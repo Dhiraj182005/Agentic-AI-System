@@ -701,6 +701,10 @@ class FakeResponse:
         self.status_code = status_code
         self._payload = payload
         self._invalid_json = invalid_json
+        self.headers = {}
+
+    async def aclose(self):
+        pass
 
     def json(self):
         if self._invalid_json:
@@ -1019,7 +1023,7 @@ async def test_evidence_empty_search_result(client):
             f"/api/v1/claims/{claim_id}/evidence/retrieve", headers=auth(token)
         )
     assert resp.status_code == 200
-    assert empty.calls == 2
+    assert empty.calls == 1
 
     print("empty search result handled without errors: PASSED")
 
@@ -1058,6 +1062,9 @@ async def main():
 
     await teardown()
     print("\nAll Module 8 (claims + evidence) tests PASSED!")
+
+    if os.environ.get("MAVES_FOCUSED_TESTS") == "1":
+        return
 
     print("\nRegression: Module 2 (authentication)...")
     from tests import test_auth

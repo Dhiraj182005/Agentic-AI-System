@@ -1,51 +1,53 @@
-"""Deterministic scoring rubric for the debate judge (Module 11).
+"""Deterministic scoring rubric for the debate judge (rubric v2).
 
 This module is the single documented configuration for the judge's scoring
 formula. The LLM never invents or modifies these weights: it only provides
 per-dimension values and qualitative text; final scores are always computed
-here in plain Python.
+here in plain Python. Every judgment stores a snapshot of the rubric it used,
+so judgments created under rubric v1 stay interpretable.
 
-Seven dimensions per agent, each 0-10:
+Eight dimensions per agent, each 0-10 (see DIMENSION_DEFINITIONS):
 
-    logical_soundness  20%   (LLM-assessed)
-    evidence_quality    20%   (LLM-assessed, only when evidence rows exist)
-    factual_support     15%   (deterministic from stored claim verdicts)
-    relevance           15%   (LLM-assessed)
-    effectiveness       10%   (LLM-assessed)
-    completeness        10%   (LLM-assessed)
-    fallacy_risk        10%   (deterministic from stored fallacy rows;
-                               a PENALTY dimension, inverted before weighting)
+    logical_soundness   20%  (LLM)  premises support the conclusion
+    evidence_quality    15%  (LLM, only when evidence rows exist)
+    factual_support     15%  (deterministic from stored claim verdicts)
+    responsiveness      15%  (LLM)  engages the strongest opposing arguments
+    relevance           10%  (LLM)
+    effectiveness       10%  (LLM)  clarity: concise, understandable, structured
+    completeness         5%  (LLM)  addresses the key aspects of the question
+    fallacy_risk        10%  (deterministic from stored fallacy rows;
+                              a PENALTY dimension, inverted before weighting)
 
 Formula (all dimensions available):
 
-    Fallacy Quality = 10 - Fallacy Risk
-    Agent Score = 0.20*Logical + 0.20*Evidence + 0.15*Factual + 0.15*Relevance
-                + 0.10*Effectiveness + 0.10*Completeness + 0.10*FallacyQuality
+    Agent Score = sum(weight * value) with fallacy value = 10 - Fallacy Risk
 
 When a dimension's underlying data is unavailable, its weight is excluded and
 the remaining weights are renormalized (divided by their sum) instead of
 fabricating a value. A score is always in 0-10; only the final displayed
 score is rounded to two decimals.
 
-Mapping to Module 10 argument evaluations: stored per-message evaluations
-(logical soundness / evidence / relevance / effectiveness, 0-10) are passed to
-the LLM as supporting context for its logical_soundness, evidence_quality,
-relevance and effectiveness assessments; they are not a separate formula
-dimension and their criteria are not reinterpreted.
+Rubric v1 (Module 11) had no responsiveness dimension and weighted evidence
+quality 20%, relevance 15% and completeness 10%. It ranked agents only when
+optional analyses existed; v2 ranks on transcript-based dimensions too and
+reports missing analyses as limitations instead of refusing to rank.
 """
 
 from __future__ import annotations
 
 from uuid import UUID
 
+RUBRIC_VERSION = 2
+
 # Single documented weight configuration (sums to 1.0).
 WEIGHTS: dict[str, float] = {
     "logical_soundness": 0.20,
-    "evidence_quality": 0.20,
+    "evidence_quality": 0.15,
     "factual_support": 0.15,
-    "relevance": 0.15,
+    "responsiveness": 0.15,
+    "relevance": 0.10,
     "effectiveness": 0.10,
-    "completeness": 0.10,
+    "completeness": 0.05,
     "fallacy_risk": 0.10,
 }
 
@@ -53,10 +55,22 @@ DIMENSION_LABELS: dict[str, str] = {
     "logical_soundness": "Logical Soundness",
     "evidence_quality": "Evidence Quality",
     "factual_support": "Factual Support",
+    "responsiveness": "Responsiveness",
     "relevance": "Relevance",
-    "effectiveness": "Effectiveness",
+    "effectiveness": "Clarity",
     "completeness": "Completeness",
     "fallacy_risk": "Fallacy Risk",
+}
+
+DIMENSION_DEFINITIONS: dict[str, str] = {
+    "logical_soundness": "Premises are stated and actually support the conclusion; no leaps.",
+    "evidence_quality": "Uses relevant, specific, attributable evidence (only scored when evidence was retrieved).",
+    "factual_support": "Share of the agent's claims that stored verification found supported vs contradicted.",
+    "responsiveness": "Engages the strongest opposing arguments specifically, concedes valid points, does not talk past others.",
+    "relevance": "Stays on the debate question.",
+    "effectiveness": "Clear, concise and well structured; no padding or repetition.",
+    "completeness": "Covers the key aspects of the question from the agent's perspective.",
+    "fallacy_risk": "Detected fallacies weighted by severity and confidence (lower is better).",
 }
 
 # Dimensions whose values are assessed by the LLM (validated 0-10); the rest
@@ -64,6 +78,7 @@ DIMENSION_LABELS: dict[str, str] = {
 LLM_DIMENSIONS = (
     "logical_soundness",
     "evidence_quality",
+    "responsiveness",
     "relevance",
     "effectiveness",
     "completeness",
@@ -71,7 +86,7 @@ LLM_DIMENSIONS = (
 
 SEVERITY_RISK_WEIGHT: dict[str, float] = {"low": 1.0, "medium": 2.0, "high": 3.0}
 
-# Score bands documented in prompt 11 section 5 (0-2 very weak ... 9-10 excellent).
+# Score bands (0-2 very weak ... 9-10 excellent).
 SCORE_BANDS = (
     (2.0, "very weak"),
     (4.0, "weak"),
@@ -81,10 +96,10 @@ SCORE_BANDS = (
 )
 
 FORMULA_TEXT = (
-    "Agent Score = 0.20*Logical Soundness + 0.20*Evidence Quality "
-    "+ 0.15*Factual Support + 0.15*Relevance + 0.10*Effectiveness "
-    "+ 0.10*Completeness + 0.10*(10 - Fallacy Risk); unavailable dimensions "
-    "are excluded and the remaining weights renormalized."
+    "Agent Score = 0.20*Logical Soundness + 0.15*Evidence Quality "
+    "+ 0.15*Factual Support + 0.15*Responsiveness + 0.10*Relevance "
+    "+ 0.10*Clarity + 0.05*Completeness + 0.10*(10 - Fallacy Risk); "
+    "unavailable dimensions are excluded and the remaining weights renormalized."
 )
 
 
@@ -113,6 +128,8 @@ def compute_factual_support(verdicts: list[str]) -> float | None:
             net += 1
         elif verdict == "contradicted":
             net -= 1
+        elif verdict == "partially_supported":
+            net += 0.5
         # insufficient_evidence stays neutral by design
     ratio = net / len(verdicts)  # -1..1
     return clamp_score((ratio + 1.0) / 2.0 * 10.0)
@@ -201,8 +218,10 @@ def decide_outcome(
 def rubric_snapshot(min_score_gap: float) -> dict:
     """The stored scoring_rubric payload for a judgment."""
     return {
+        "version": RUBRIC_VERSION,
         "weights": dict(WEIGHTS),
         "formula": FORMULA_TEXT,
+        "definitions": dict(DIMENSION_DEFINITIONS),
         "min_score_gap": min_score_gap,
         "score_bands": [
             {"max": upper, "label": label} for upper, label in SCORE_BANDS
@@ -211,6 +230,7 @@ def rubric_snapshot(min_score_gap: float) -> dict:
             "logical_soundness": "llm",
             "evidence_quality": "llm (only when evidence rows exist)",
             "factual_support": "deterministic from claim verdicts",
+            "responsiveness": "llm (informed by stored rebuttal links and concessions)",
             "relevance": "llm",
             "effectiveness": "llm",
             "completeness": "llm",

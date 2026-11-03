@@ -16,6 +16,7 @@ FallacyType = Literal[
     "red_herring",
     "false_cause",
     "bandwagon",
+    "cherry_picking",
     "loaded_question",
     "tu_quoque",
     "no_fallacy",
@@ -27,8 +28,7 @@ SeverityType = Literal["low", "medium", "high"]
 class FallacyResponse(BaseModel):
     """One fallacy analysis result.
 
-    id is null only for a no_fallacy analysis response, which is never
-    persisted as a row.
+    Persisted outcomes include clean results and their analysis timestamps.
     """
 
     id: UUID | None = None
@@ -36,6 +36,7 @@ class FallacyResponse(BaseModel):
     message_id: UUID
     agent_id: UUID
     agent_name: str
+    original_argument: str | None = None
     fallacy_type: FallacyType
     severity: SeverityType
     confidence: float
@@ -51,5 +52,6 @@ class FallacyListResponse(BaseModel):
 
 class FallacyAnalysisListResponse(BaseModel):
     debate_id: UUID
+    failures: list[dict] = []
     analyzed_count: int
     fallacies: list[FallacyResponse]

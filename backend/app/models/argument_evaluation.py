@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, Float, ForeignKey, Text, Integer, JSON, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,6 +51,15 @@ class ArgumentEvaluation(Base):
     effectiveness_score: Mapped[float] = mapped_column(Float, nullable=False)
     overall_score: Mapped[float] = mapped_column(Float, nullable=False)
     explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    responsiveness: Mapped[float | None] = mapped_column(Float)
+    completeness: Mapped[float | None] = mapped_column(Float)
+    factual_support: Mapped[float | None] = mapped_column(Float)
+    fallacy_risk: Mapped[float | None] = mapped_column(Float)
+    rubric_version: Mapped[int | None] = mapped_column(Integer)
+    criterion_scores: Mapped[dict | None] = mapped_column(JSON)
+    strengths: Mapped[list | None] = mapped_column(JSON)
+    weaknesses: Mapped[list | None] = mapped_column(JSON)
+    evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

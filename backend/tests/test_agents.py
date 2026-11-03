@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import inspect
 import os
+from unittest.mock import patch
 
 import httpx
 from httpx import ASGITransport
@@ -386,13 +387,16 @@ async def main():
 
     await test_each_agent_uses_its_system_prompt()
     await test_each_agent_declares_identifier_role_name()
-    await test_factory_returns_each_agent()
-    await test_factory_normalizes_role_input()
+    with patch("app.agents.base_agent.get_llm_provider", return_value=FakeProvider()):
+        await test_factory_returns_each_agent()
+        await test_factory_normalizes_role_input()
     await test_factory_rejects_unsupported_role()
     await test_factory_supported_roles_match_seed_roles()
-    await test_agents_use_base_agent_and_provider_abstraction()
+    with patch("app.agents.base_agent.get_llm_provider", return_value=FakeProvider()):
+        await test_agents_use_base_agent_and_provider_abstraction()
     await test_no_agent_imports_groq_sdk()
-    await test_responses_are_normalized()
+    with patch("app.agents.base_agent.get_llm_provider", return_value=FakeProvider()):
+        await test_responses_are_normalized()
     await test_base_agent_default_provider_from_factory()
 
     print("Setting up isolated test DB (aidebate_test)...")

@@ -38,6 +38,7 @@ from app.models.debate import Debate
 from app.models.debate_message import DebateMessage
 from app.models.fallacy import FALLACY_SEVERITIES, FALLACY_TYPES, Fallacy
 from app.models.judge import DebateJudgment
+from app.models.verdict import DebateVerdict
 from app.schemas.analytics import (
     DEBATE_STATUSES,
     EVALUATION_DIMENSIONS,
@@ -108,6 +109,15 @@ async def summary(db: AsyncSession, user_id: uuid.UUID) -> dict:
             )
         ).scalar_one()
     )
+    with_verdict = int(
+        (
+            await db.execute(
+                select(func.count(DebateVerdict.id))
+                .join(Debate, DebateVerdict.debate_id == Debate.id)
+                .where(Debate.user_id == user_id)
+            )
+        ).scalar_one()
+    )
 
     completed = counts_by_status.get("completed", 0)
     return {
@@ -122,6 +132,7 @@ async def summary(db: AsyncSession, user_id: uuid.UUID) -> dict:
         "verified_claims": verified,
         "unverified_claims": max(claims - verified, 0),
         "debates_with_judgment": with_judgment,
+        "debates_with_verdict": with_verdict,
         "completion_rate": (
             round(completed / total, 4) if total > 0 else None
         ),
@@ -351,14 +362,14 @@ async def argument_quality(db: AsyncSession, user_id: uuid.UUID) -> dict:
     fallacy_map = {name: int(count) for name, count in fallacy_rows.all()}
 
     severity_rows = await db.execute(
-        select(Fallacy.severity, func.count(Fallacy.id))
+        select(Fallacy.severity, func.count(Fallacy.id)).where(Fallacy.fallacy_type != "no_fallacy")
         .join(Debate, Fallacy.debate_id == Debate.id)
         .where(Debate.user_id == user_id)
         .group_by(Fallacy.severity)
     )
     severity_map = {name: int(count) for name, count in severity_rows.all()}
 
-    fallacy_total = sum(fallacy_map.values())
+    fallacy_total = sum(count for kind, count in fallacy_map.items() if kind != "no_fallacy")
     fallacy_messages = int(
         (
             await db.execute(
@@ -424,11 +435,11 @@ async def argument_quality(db: AsyncSession, user_id: uuid.UUID) -> dict:
         ]
 
     notes: list[str] = []
-    if fallacy_total == 0:
+    if fallacy_messages == 0:
         notes.append(
             "No fallacy rows are stored for your debates. This does not mean "
             "the debates are fallacy-free: analysis may simply not have been "
-            "run, and clean analyses are never persisted."
+            "run."
         )
     if evaluation_total == 0:
         notes.append(
@@ -436,13 +447,12 @@ async def argument_quality(db: AsyncSession, user_id: uuid.UUID) -> dict:
         )
     notes.append(
         "'Not yet analyzed' counts messages without a stored argument "
-        "evaluation; fallacy coverage cannot be computed because no-fallacy "
-        "results are not persisted."
+        "evaluation. Fallacy coverage includes persisted no-fallacy results."
     )
 
     return {
-        "available": fallacy_total > 0 or evaluation_total > 0,
-        "fallacy_available": fallacy_total > 0,
+        "available": fallacy_messages > 0 or evaluation_total > 0,
+        "fallacy_available": fallacy_messages > 0,
         "evaluation_available": evaluation_total > 0,
         "fallacy_total": fallacy_total,
         "fallacy_type_counts": [
@@ -485,6 +495,7 @@ async def recent_debates(
     debate_ids = [debate.id for debate in debates]
 
     message_counts: dict[uuid.UUID, int] = {}
+    verdicts: dict[uuid.UUID, dict] = {}
     verified_debates: set[uuid.UUID] = set()
     judged_debates: set[uuid.UUID] = set()
     if debate_ids:
@@ -509,6 +520,19 @@ async def recent_debates(
         )
         judged_debates = {rid for (rid,) in judg_rows.all()}
 
+        verdict_rows = await db.execute(
+            select(
+                DebateVerdict.debate_id,
+                DebateVerdict.position,
+                DebateVerdict.answer,
+                DebateVerdict.confidence,
+            ).where(DebateVerdict.debate_id.in_(debate_ids))
+        )
+        verdicts = {
+            rid: {"position": position, "answer": answer, "confidence": confidence}
+            for rid, position, answer, confidence in verdict_rows.all()
+        }
+
     items = [
         {
             "id": str(debate.id),
@@ -520,6 +544,7 @@ async def recent_debates(
             "message_count": message_counts.get(debate.id, 0),
             "has_verification": debate.id in verified_debates,
             "has_judgment": debate.id in judged_debates,
+            "verdict": verdicts.get(debate.id),
         }
         for debate in debates
     ]

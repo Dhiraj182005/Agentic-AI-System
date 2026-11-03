@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Reasoning tokens count against max_tokens (see claim_extraction): 16000
 # leaves comfortable headroom for the reasoning model to answer a single
 # message evaluation.
-EVALUATION_MAX_TOKENS = 16000
+EVALUATION_MAX_TOKENS = 4000
 MAX_EXPLANATION_LENGTH = 500
 MAX_CONTEXT_CHARS = 600
 MAX_MESSAGE_CHARS = 4000
@@ -69,6 +69,10 @@ class ArgumentEvaluationOutput(BaseModel):
     effectiveness_score: float = Field(ge=0.0, le=10.0)
     overall_score: float = Field(ge=0.0, le=10.0)
     explanation: str = Field(min_length=1)
+    responsiveness: float | None = Field(default=None, ge=0, le=10)
+    completeness: float | None = Field(default=None, ge=0, le=10)
+    strengths: list[str] = Field(default_factory=list, max_length=8)
+    weaknesses: list[str] = Field(default_factory=list, max_length=8)
 
     @field_validator(
         "logical_soundness",
@@ -121,6 +125,14 @@ SYSTEM_PROMPT = (
     "Respond with ONLY a JSON object (no markdown, no commentary):\n"
     '{"logical_soundness": 0, "evidence_score": 0, "relevance_score": 0, '
     '"effectiveness_score": 0, "overall_score": 0.0, "explanation": "..."}'
+)
+
+# The overall value is recomputed by MAVES using the published v2 rubric.
+SYSTEM_PROMPT += (
+    '\nAlso return responsiveness (0-10: engagement with opposing reasoning), '
+    'completeness (0-10: coverage of relevant aspects), strengths (array of short strings) '
+    'and weaknesses (array of short strings). Do not score factual truth. '
+    'The overall_score field is advisory only; MAVES calculates the final weighted score.'
 )
 
 
@@ -253,8 +265,9 @@ class ArgumentEvaluationService:
             )
             if isinstance(exc, (LLMProviderAPIError, LLMTimeoutError)):
                 raise ArgumentEvaluationError(
-                    "Argument evaluation failed because the language model "
-                    "provider did not respond"
+                    # Keep the provider's specific, user-safe reason (e.g. which
+                    # rate limit or quota) instead of a generic "did not respond".
+                    f"Argument evaluation failed: {exc.user_message}"
                 ) from exc
             raise ArgumentEvaluationError(
                 "Argument evaluation failed because the language model "

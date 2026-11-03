@@ -12,7 +12,14 @@ export interface Claim {
   claim_type: ClaimType
   position: number
   created_at: string
+  fact_check_status?: FactCheckStatus | null
 }
+
+// Outcome of the Google Fact Check search for a claim. Only "matched" and
+// "no_match" mean a search actually ran.
+export type FactCheckStatus = 'matched' | 'no_match' | 'unavailable' | 'failed'
+
+export type EvidenceSourceType = 'web' | 'google_fact_check'
 
 export interface ClaimListResponse {
   debate_id: string
@@ -28,11 +35,20 @@ export interface EvidenceItem {
   source_name: string
   relevance_score: number | null
   retrieved_at: string
+  source_type: EvidenceSourceType
+  // Published fact-checks only: the publisher's rating of the claim they
+  // reviewed - an external opinion, never MAVES's own verdict.
+  publisher: string | null
+  external_rating: string | null
+  review_date: string | null
+  claim_reviewed: string | null
+  claimant: string | null
 }
 
 export interface EvidenceListResponse {
   claim_id: string
   evidence: EvidenceItem[]
+  fact_check_status?: FactCheckStatus | null
 }
 
 export const CLAIM_TYPE_LABELS: Record<ClaimType, string> = {
@@ -43,7 +59,7 @@ export const CLAIM_TYPE_LABELS: Record<ClaimType, string> = {
   other: 'Other',
 }
 
-export type Verdict = 'supported' | 'contradicted' | 'insufficient_evidence'
+export type Verdict = 'supported' | 'contradicted' | 'partially_supported' | 'insufficient_evidence'
 
 export type Confidence = 'low' | 'medium' | 'high'
 
@@ -62,6 +78,7 @@ export interface ClaimVerification {
 export const VERDICT_LABELS: Record<Verdict, string> = {
   supported: 'Supported',
   contradicted: 'Contradicted',
+  partially_supported: 'Partially Supported',
   insufficient_evidence: 'Insufficient Evidence',
 }
 

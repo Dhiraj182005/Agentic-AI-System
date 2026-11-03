@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -29,6 +29,7 @@ def _analysis_response(result: FallacyAnalysisResult) -> FallacyResponse:
         message_id=result.analysis.message_id,
         agent_id=result.analysis.agent_id,
         agent_name=result.analysis.agent_name,
+        original_argument=result.analysis.content,
         fallacy_type=result.detected.fallacy_type,
         severity=result.detected.severity,
         confidence=result.detected.confidence,
@@ -45,6 +46,7 @@ def _stored_response(fallacy, agent_name: str) -> FallacyResponse:
         message_id=fallacy.message_id,
         agent_id=fallacy.agent_id,
         agent_name=agent_name,
+        original_argument=fallacy.message.content,
         fallacy_type=fallacy.fallacy_type,
         severity=fallacy.severity,
         confidence=fallacy.confidence,
@@ -64,9 +66,9 @@ async def analyze_debate_fallacies(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        results = await argument_analysis_service.analyze_debate_fallacies(
-            db, current_user, debate_id
-        )
+        from app.services.message_pipeline import run_message_batch
+        summary = await run_message_batch(db, current_user, debate_id, stage="fallacy")
+        rows = await argument_analysis_service.list_fallacies(db, current_user, debate_id)
     except debate_service.DebateNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Debate not found"
@@ -89,9 +91,9 @@ async def analyze_debate_fallacies(
             detail="Fallacy analysis failed because of an internal error",
         )
     return FallacyAnalysisListResponse(
-        debate_id=debate_id,
-        analyzed_count=len(results),
-        fallacies=[_analysis_response(result) for result in results],
+        debate_id=debate_id, analyzed_count=summary["completed"],
+        failures=summary["failures"],
+        fallacies=[_stored_response(row, name) for row, name in rows],
     )
 
 
@@ -122,12 +124,13 @@ async def list_fallacies(
 )
 async def analyze_message_fallacy(
     message_id: UUID,
+    force: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         result = await argument_analysis_service.analyze_message_fallacy(
-            db, current_user, message_id
+            db, current_user, message_id, force=force
         )
     except argument_analysis_service.MessageNotFoundError:
         raise HTTPException(

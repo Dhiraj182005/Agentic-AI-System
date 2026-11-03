@@ -1,7 +1,7 @@
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user
@@ -35,6 +35,17 @@ def _claim_response(claim, agent_name: str) -> ClaimResponse:
         claim_type=claim.claim_type,
         position=claim.position,
         created_at=claim.created_at,
+        fact_check_status=claim.fact_check_status,
+        canonical_claim_id=claim.canonical_claim_id,
+    )
+
+
+async def _evidence_response(db, user, claim_id, evidence) -> EvidenceListResponse:
+    claim = await claim_service.get_claim_for_user(db, user, claim_id)
+    return EvidenceListResponse(
+        claim_id=claim_id,
+        evidence=[EvidenceResponse.model_validate(item) for item in evidence],
+        fact_check_status=claim.fact_check_status,
     )
 
 
@@ -99,12 +110,13 @@ async def list_claims(
 )
 async def retrieve_evidence(
     claim_id: UUID,
+    force: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
         evidence = await claim_service.retrieve_evidence(
-            db, current_user, claim_id
+            db, current_user, claim_id, force=force
         )
     except claim_service.ClaimNotFoundError:
         raise HTTPException(
@@ -135,10 +147,7 @@ async def retrieve_evidence(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Evidence retrieval failed because of an internal error",
         )
-    return EvidenceListResponse(
-        claim_id=claim_id,
-        evidence=[EvidenceResponse.model_validate(item) for item in evidence],
-    )
+    return await _evidence_response(db, current_user, claim_id, evidence)
 
 
 @router.get("/claims/{claim_id}/evidence", response_model=EvidenceListResponse)
@@ -153,10 +162,7 @@ async def get_evidence(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found"
         )
-    return EvidenceListResponse(
-        claim_id=claim_id,
-        evidence=[EvidenceResponse.model_validate(item) for item in evidence],
-    )
+    return await _evidence_response(db, current_user, claim_id, evidence)
 
 
 @router.post(
@@ -178,6 +184,8 @@ async def verify_claim(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         )
+    except claim_service.ClaimValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except HTTPException:
         raise
     except Exception:

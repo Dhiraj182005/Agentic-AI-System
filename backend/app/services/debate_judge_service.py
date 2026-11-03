@@ -47,9 +47,14 @@ logger = logging.getLogger(__name__)
 
 # Reasoning tokens count against max_tokens (see claim_extraction); the judge
 # prompt is the largest in the project, so keep generous headroom.
-JUDGE_MAX_TOKENS = 16000
-MAX_MESSAGE_EXCERPT = 600
-MAX_PROMPT_CONTENT_CHARS = 14000
+# Per-agent call. Kept well under small per-minute token limits (Groq
+# on-demand: 8k TPM); reasoning overflow escalates up to the provider ceiling.
+JUDGE_MAX_TOKENS = 6000
+# Free-text (pre-structured) turns are excerpted; structured turns are passed
+# field by field. v1 cut every message to its first 600 characters, which
+# left the judge mostly preamble and produced identical scores.
+MAX_MESSAGE_EXCERPT = 1500
+MAX_PROMPT_CONTENT_CHARS = 26000
 MAX_TEXT_FIELD = 700
 MAX_SUMMARY_FIELD = 2000
 MAX_LIST_ITEMS = 20
@@ -103,6 +108,9 @@ class DimensionScores(BaseModel):
     relevance: float = Field(ge=0.0, le=10.0)
     effectiveness: float = Field(ge=0.0, le=10.0)
     completeness: float = Field(ge=0.0, le=10.0)
+    # Rubric v2. Optional so an answer without it marks the dimension
+    # unavailable instead of failing the whole judgment.
+    responsiveness: float | None = Field(default=None, ge=0.0, le=10.0)
 
     @field_validator(
         "logical_soundness",
@@ -110,10 +118,13 @@ class DimensionScores(BaseModel):
         "relevance",
         "effectiveness",
         "completeness",
+        "responsiveness",
         mode="before",
     )
     @classmethod
     def _coerce_number(cls, value) -> float:
+        if value is None:
+            return None
         if isinstance(value, bool):
             raise ValueError("dimension scores must be numbers between 0 and 10")
         if isinstance(value, str):
@@ -231,10 +242,19 @@ SYSTEM_PROMPT = (
     "'contradicted' means the stored evidence conflicts with the claim.\n"
     "- If fallacy analysis, evidence or evaluations are marked unavailable, "
     "acknowledge that in your text; do not fabricate results.\n"
-    "- Score only these dimensions for each agent, each 0-10: "
-    "logical_soundness, evidence_quality, relevance, effectiveness, "
-    "completeness. Scale: 0-2 very weak, 3-4 weak, 5-6 moderate, 7-8 strong, "
-    "9-10 excellent.\n"
+    "- Score only these dimensions for each agent, each 0-10 with one decimal: "
+    "logical_soundness (premises support the conclusion), evidence_quality "
+    "(specific, relevant, attributable evidence), responsiveness (engages the "
+    "strongest opposing arguments specifically and concedes valid points), "
+    "relevance (stays on the question), effectiveness (clarity: concise, "
+    "structured, no repetition), completeness (covers the key aspects). "
+    "Scale: 0-2 very weak, 3-4 weak, 5-6 moderate, 7-8 strong, 9-10 excellent.\n"
+    "- Score each agent on ITS OWN turns. Compare the agents before scoring: "
+    "give identical scores only when their contributions are genuinely of "
+    "equal quality, and then say so explicitly. Never copy one agent's scores "
+    "to the others.\n"
+    "- In reasoning_quality cite the specific turns (e.g. R2-Lawyer) that "
+    "justify the scores.\n"
     "- Do not reward message count, length, confidence or assertive language. "
     "A short well-evidenced argument can outscore a long unsupported one.\n"
     "- Judge the argument text neutrally: never penalize a political, "
@@ -249,7 +269,7 @@ SYSTEM_PROMPT = (
     "Respond with ONLY a JSON object (no markdown, no commentary):\n"
     '{"agents": [{"agent_name": "...", "dimensions": {"logical_soundness": 0, '
     '"evidence_quality": 0, "relevance": 0, "effectiveness": 0, '
-    '"completeness": 0}, "strengths": ["..."], "weaknesses": ["..."], '
+    '"completeness": 0, "responsiveness": 0}, "strengths": ["..."], "weaknesses": ["..."], '
     '"reasoning_quality": "...", "evidence_quality_explanation": "...", '
     '"factual_support_explanation": "...", "completeness_assessment": "...", '
     '"fallacy_impact_assessment": "...", "confidence": "medium"}], '
@@ -304,6 +324,10 @@ class AgentJudgeContext:
     name: str
     role: str
     messages: list[dict] = dataclass_field(default_factory=list)
+    rebuttals: list[str] = dataclass_field(default_factory=list)
+    concessions: int = 0
+    fallacy_checks: int = 0
+    evidence_titles: list[str] = dataclass_field(default_factory=list)
     claims: list[dict] = dataclass_field(default_factory=list)
     fallacies: list[dict] = dataclass_field(default_factory=list)
     evaluations: list[dict] = dataclass_field(default_factory=list)
@@ -332,7 +356,7 @@ async def load_judge_contexts(
     ).all()
 
     contexts: dict[UUID, AgentJudgeContext] = {}
-    for message, _round_number in message_rows:
+    for message, round_number in message_rows:
         context = contexts.get(message.agent_id)
         if context is None:
             agent = next((a for a in debate.agents if a.id == message.agent_id), None)
@@ -342,10 +366,35 @@ async def load_judge_contexts(
                 agent_id=agent.id, name=agent.name, role=agent.role
             )
             contexts[message.agent_id] = context
-        excerpt = (message.content or "").strip()
-        if len(excerpt) > MAX_MESSAGE_EXCERPT:
-            excerpt = excerpt[:MAX_MESSAGE_EXCERPT].rstrip() + " [...]"
-        context.messages.append({"type": message.message_type, "content": excerpt})
+        ref = f"R{round_number}-{context.name}"
+        data = message.structured
+        if data:
+            parts = [f"position: {data.get('position', '')}"]
+            rebuttal = data.get("rebuttal_to") or {}
+            if rebuttal.get("argument"):
+                target = rebuttal.get("ref") or "an unlinked earlier argument"
+                parts.append(f"responds to {target}: {rebuttal['argument']}")
+                if rebuttal.get("ref"):
+                    context.rebuttals.append(rebuttal["ref"])
+            parts.append(f"main argument: {data.get('main_argument', '')}")
+            parts.append(f"reasoning: {data.get('reasoning', '')}")
+            if data.get("factual_claims"):
+                parts.append("factual claims: " + "; ".join(data["factual_claims"]))
+            if data.get("evidence_references"):
+                parts.append("cites: " + "; ".join(data["evidence_references"]))
+            if data.get("concession"):
+                parts.append(f"concedes: {data['concession']}")
+                context.concessions += 1
+            if data.get("uncertainties"):
+                parts.append("uncertain about: " + "; ".join(data["uncertainties"]))
+            text = " | ".join(parts)
+        else:
+            text = (message.content or "").strip()
+            if len(text) > MAX_MESSAGE_EXCERPT:
+                text = text[:MAX_MESSAGE_EXCERPT].rstrip() + " [...]"
+        context.messages.append(
+            {"type": message.message_type, "content": text, "ref": ref}
+        )
 
     claim_rows = (
         await db.execute(
@@ -364,6 +413,9 @@ async def load_judge_contexts(
         verification = claim.verification
         evidence_count = len(claim.evidence)
         context.evidence_count += evidence_count
+        for row in claim.evidence[:3]:
+            if row.title and len(context.evidence_titles) < 8:
+                context.evidence_titles.append(row.title)
         context.claims.append(
             {
                 "text": claim.text,
@@ -377,7 +429,11 @@ async def load_judge_contexts(
         await db.execute(select(Fallacy).where(Fallacy.debate_id == debate.id))
     ).scalars().all()
     seen: set[tuple[UUID, str]] = set()
+    checked_messages: set[UUID] = set()
     for fallacy in fallacy_rows:
+        if fallacy.agent_id in contexts and fallacy.message_id not in checked_messages:
+            contexts[fallacy.agent_id].fallacy_checks += 1
+            checked_messages.add(fallacy.message_id)
         if fallacy.fallacy_type == "no_fallacy":
             continue
         dedupe_key = (fallacy.message_id, fallacy.fallacy_type)
@@ -421,9 +477,31 @@ async def load_judge_contexts(
     return ordered
 
 
-def build_judge_prompt(topic: str, contexts: list[AgentJudgeContext]) -> str:
-    """Build the user prompt carrying the debate material and stored records."""
-    lines = [f"Debate topic: {(topic or '').strip()[:500]}", ""]
+def build_judge_prompt(
+    topic: str,
+    contexts: list[AgentJudgeContext],
+    *,
+    context_text: str | None = None,
+    mode: str | None = None,
+    target: str | None = None,
+) -> str:
+    """Build the user prompt carrying the debate material and stored records.
+
+    With ``target``, only that participant is shown in full and the others
+    compactly (their turns as context for responsiveness): one call per
+    agent keeps prompts inside small per-minute token limits and stops the
+    model from copying one score card to every agent.
+    """
+    lines = [f"Debate topic: {(topic or '').strip()[:500]}"]
+    if context_text:
+        lines.append(f"Context from the user: {context_text.strip()[:1000]}")
+    if mode:
+        lines.append(
+            "Format: pro/con (agents argue opposing sides)"
+            if mode == "pro_con"
+            else "Format: balanced (each expert gives their own perspective)"
+        )
+    lines.append("")
     lines.append(
         "Participants: " + ", ".join(f"{c.name} ({c.role})" for c in contexts)
     )
@@ -441,10 +519,29 @@ def build_judge_prompt(topic: str, contexts: list[AgentJudgeContext]) -> str:
     content_budget = MAX_PROMPT_CONTENT_CHARS
     for context in contexts:
         lines.append("")
-        lines.append(f"== {context.name} ==")
-        lines.append("Messages:")
+        if target is not None and context.name != target:
+            lines.append(f"== {context.name} ({context.role}) - context only, do not score ==")
+            for message in context.messages:
+                lines.append(
+                    f"- [{message.get('ref', '')}, {message['type']}] "
+                    f"{_bounded_text(message['content'], 350)}"
+                )
+            continue
+        lines.append(f"== {context.name} ({context.role}) ==")
+        lines.append("Turns:")
         for message in context.messages:
-            lines.append(f"- [{message['type']}] {message['content']}")
+            lines.append(f"- [{message.get('ref', '')}, {message['type']}] {message['content']}")
+        lines.append(
+            "Responsiveness signals: "
+            + (
+                f"rebutted {', '.join(context.rebuttals)}"
+                if context.rebuttals
+                else "no linked rebuttals"
+            )
+            + f"; {context.concessions} concession(s)."
+        )
+        if context.evidence_titles:
+            lines.append("Retrieved evidence titles: " + "; ".join(context.evidence_titles))
         lines.append("Extracted claims:")
         if context.claims:
             for claim in context.claims:
@@ -469,6 +566,8 @@ def build_judge_prompt(topic: str, contexts: list[AgentJudgeContext]) -> str:
                     f"- {fallacy['type']} ({fallacy['severity']}, "
                     f"confidence {fallacy['confidence']})"
                 )
+        elif context.fallacy_checks:
+            lines.append(f"Stored fallacy analyses: {context.fallacy_checks} messages checked; no clear fallacies detected.")
         else:
             lines.append("Stored fallacy analyses: unavailable (not run)")
         if context.evaluations:
@@ -496,14 +595,64 @@ def build_judge_prompt(topic: str, contexts: list[AgentJudgeContext]) -> str:
             lines.append("Retrieved evidence: unavailable (none stored).")
 
     lines.append("")
-    lines.append(
-        "Assess every participant listed above on the rubric dimensions and "
-        "return the JSON object exactly as specified."
-    )
+    if target is not None:
+        lines.append(
+            f"Evaluate ONLY {target}. Use the other participants' turns only as "
+            f"context for how well {target} engaged with them. Score {target} on "
+            "its own merits against the scale; do not anchor on any default "
+            f"value. Return the JSON object with an \"agents\" list containing "
+            f"exactly one entry, for {target}."
+        )
+    else:
+        lines.append(
+            "Assess every participant listed above on the rubric dimensions and "
+            "return the JSON object exactly as specified."
+        )
     prompt = "\n".join(lines)
     if len(prompt) > MAX_PROMPT_CONTENT_CHARS + 4000:
         prompt = prompt[: MAX_PROMPT_CONTENT_CHARS + 4000] + "\n[truncated]"
     return prompt
+
+
+def performance_summary(
+    agent_scores: list[dict], outcome: str, winner_agent_id, min_gap: float
+) -> str:
+    """Summary written from the computed scores (no extra LLM call)."""
+    ranked = sorted(agent_scores, key=lambda a: -a["final_score"])
+    listing = ", ".join(f"{a['agent_name']} {a['final_score']:.2f}" for a in ranked)
+    if outcome == "winner" and winner_agent_id is not None:
+        best = next(a for a in ranked if a["agent_id"] == str(winner_agent_id))
+        strength = best["strengths"][0] if best.get("strengths") else ""
+        text = (
+            f"{best['agent_name']} argued best under the rubric ({listing})."
+            + (f" Its main strength: {strength.rstrip('.')}." if strength else "")
+        )
+    elif outcome == "tie":
+        text = (
+            f"The top scores are within {min_gap} points ({listing}), so no "
+            "single best performer is named."
+        )
+    else:
+        text = f"No ranking is possible ({listing})."
+    return text + " This rates argument quality only; it is not the debate's verdict."
+
+
+def judge_inputs_from_contexts(contexts: list[AgentJudgeContext]) -> dict:
+    """Counts of the stored records a judgment was based on."""
+    return {
+        "messages": sum(len(c.messages) for c in contexts),
+        "claims": sum(len(c.claims) for c in contexts),
+        "verifications": sum(len(c.verdicts) for c in contexts),
+        "evidence": sum(c.evidence_count for c in contexts),
+        "fallacies": sum(len(c.fallacies) for c in contexts),
+        "evaluations": sum(len(c.evaluations) for c in contexts),
+    }
+
+
+async def current_judge_inputs(db: AsyncSession, debate: Debate) -> dict:
+    from app.services.verdict_service import material_fingerprint
+    return {**judge_inputs_from_contexts(await load_judge_contexts(db, debate)),
+            "material_fingerprint": await material_fingerprint(db, debate.id)}
 
 
 class DebateJudgeService:
@@ -536,8 +685,9 @@ class DebateJudgeService:
             )
             if isinstance(exc, (LLMProviderAPIError, LLMTimeoutError)):
                 raise JudgeLLMError(
-                    "Judgment failed because the language model provider "
-                    "did not respond"
+                    # Keep the provider's specific, user-safe reason (e.g. which
+                    # rate limit or quota) instead of a generic "did not respond".
+                    f"Judgment failed: {exc.user_message}"
                 ) from exc
             raise JudgeLLMError(
                 "Judgment failed because the language model returned no "
@@ -551,6 +701,7 @@ class DebateJudgeService:
                 "Judgment failed because the language model provider did "
                 "not respond"
             ) from exc
+        self.last_model = getattr(response, "model", None)
         return parse_judge_payload(response.content)
 
     async def get_existing(self, db: AsyncSession, debate_id: UUID) -> DebateJudgment | None:
@@ -560,7 +711,11 @@ class DebateJudgeService:
         return result.scalar_one_or_none()
 
     async def judge_debate(
-        self, db: AsyncSession, user: User, debate_id: UUID
+        self,
+        db: AsyncSession,
+        user: User,
+        debate_id: UUID,
+        regenerate: bool = False,
     ) -> DebateJudgment:
         """Validate, assess, score and persist the judgment for one debate.
 
@@ -572,9 +727,11 @@ class DebateJudgeService:
         ).scalar_one_or_none()
         if debate is None or debate.user_id != user.id:
             raise JudgeNotFoundError("Debate not found")
+        from app.services.argument_analysis_service import _message_lock
+        await _message_lock(db, debate_id)
 
         existing = await self.get_existing(db, debate_id)
-        if existing is not None:
+        if existing is not None and not regenerate:
             return existing
 
         if debate.status != "completed":
@@ -582,19 +739,21 @@ class DebateJudgeService:
                 "The debate must be completed before it can be judged"
             )
 
+        input_snapshot = await current_judge_inputs(db, debate)
         contexts = await load_judge_contexts(db, debate)
         if not contexts:
             raise JudgeDataUnavailableError(
                 "The debate has no messages to evaluate"
             )
 
-        # Essential stored analysis data: at least one of claim
-        # verifications, fallacy analyses or argument evaluations exists.
-        data_sufficient = any(c.verdicts for c in contexts) or any(
+        # Rubric v2: the transcript itself is enough to compare argument
+        # quality. Optional analyses (verifications, fallacies, evaluations)
+        # refine the score when present and are reported as limitations when
+        # absent - they no longer block a ranking.
+        analysis_available = any(c.verdicts for c in contexts) or any(
             c.fallacies for c in contexts
         ) or any(c.evaluations for c in contexts)
-
-        output = await self._assess(build_judge_prompt(debate.topic, contexts))
+        data_sufficient = len(contexts) >= 2
 
         # Match participants case-insensitively: models sometimes echo names
         # in lowercase, but the stored canonical name always comes from the
@@ -602,31 +761,44 @@ class DebateJudgeService:
         def _norm(name: str) -> str:
             return " ".join(name.strip().casefold().split())
 
-        expected_by_key = {_norm(c.name): c.name for c in contexts}
-        provided_by_key = {_norm(a.agent_name): a for a in output.agents}
-        if (
-            set(provided_by_key) != set(expected_by_key)
-            or len(provided_by_key) != len(output.agents)
-        ):
-            logger.error(
-                "Judge LLM agent mismatch: expected %s, got %s",
-                sorted(c.name for c in contexts),
-                [a.agent_name for a in output.agents],
+        # One call per participant. Scoring all agents in one answer let the
+        # model copy one score card to everyone (observed with
+        # openai/gpt-oss-20b: identical scores for four different agents).
+        assessments: dict[str, AgentAssessment] = {}
+        models: dict[str, str | None] = {}
+        llm_limitations: list[str] = []
+        for context in contexts:
+            output = await self._assess(
+                build_judge_prompt(
+                    debate.topic,
+                    contexts,
+                    context_text=debate.context,
+                    mode=debate.mode,
+                    target=context.name,
+                )
             )
-            raise JudgeLLMError(
-                "The language model returned assessments for the wrong "
-                "participants"
-            )
-        assessments = {
-            expected_by_key[key]: provided_by_key[key]
-            for key in expected_by_key
-        }
+            matches = [a for a in output.agents if _norm(a.agent_name) == _norm(context.name)]
+            if len(matches) != 1:
+                logger.error(
+                    "Judge LLM agent mismatch: expected %s, got %s",
+                    context.name,
+                    [a.agent_name for a in output.agents],
+                )
+                raise JudgeLLMError(
+                    "The language model returned assessments for the wrong "
+                    "participants"
+                )
+            assessments[context.name] = matches[0]
+            models[context.name] = getattr(self, "last_model", None)
+            for item in qualitative_limitations(output.limitations):
+                if item not in llm_limitations:
+                    llm_limitations.append(item)
 
         min_gap = get_settings().JUDGE_MIN_SCORE_GAP
         data_notes: list[str] = []
         agent_scores: list[dict] = []
 
-        if not any(c.fallacies for c in contexts):
+        if not any(c.fallacy_checks for c in contexts):
             data_notes.append(
                 "Fallacy analysis has not been run for this debate; the "
                 "fallacy-risk dimension is unavailable."
@@ -658,13 +830,14 @@ class DebateJudgeService:
                     else None
                 ),
                 "factual_support": judge_rubric.compute_factual_support(verdicts),
+                "responsiveness": assessment.dimensions.responsiveness,
                 "relevance": assessment.dimensions.relevance,
                 "effectiveness": assessment.dimensions.effectiveness,
                 "completeness": assessment.dimensions.completeness,
                 "fallacy_risk": judge_rubric.compute_fallacy_risk(
                     [(f["severity"], f["confidence"]) for f in context.fallacies],
-                    len(context.messages),
-                ),
+                    context.fallacy_checks,
+                ) if context.fallacies else (0.0 if context.fallacy_checks else None),
             }
             unavailable = [
                 judge_rubric.DIMENSION_LABELS[dim]
@@ -691,10 +864,12 @@ class DebateJudgeService:
                     f"{unverified} of {len(context.claims)} claims have no "
                     "verification record."
                 )
-            if not context.fallacies:
+            if not context.fallacy_checks:
                 agent_notes.append(
                     "Fallacy analysis has not been run for this agent's messages."
                 )
+            if 0 < context.fallacy_checks < len(context.messages):
+                agent_notes.append(f"Only {context.fallacy_checks}/{len(context.messages)} messages have fallacy checks; risk describes this subset.")
             if not context.evaluations:
                 agent_notes.append(
                     "No stored argument evaluations for this agent's messages."
@@ -715,6 +890,7 @@ class DebateJudgeService:
                     "factual_support_assessment": assessment.factual_support_explanation,
                     "fallacy_impact_assessment": assessment.fallacy_impact_assessment,
                     "confidence": assessment.confidence,
+                    "model": models.get(context.name),
                     "limitations": agent_notes,
                 }
             )
@@ -741,27 +917,49 @@ class DebateJudgeService:
                 "Fewer than two agents posted messages; no comparison is "
                 "possible."
             )
-        if not data_sufficient:
+        if not analysis_available:
             data_notes.append(
-                "No stored claim verifications, fallacy analyses or argument "
-                "evaluations exist; the outcome is inconclusive rather than "
-                "a manufactured winner."
+                "No claim verifications, fallacy analyses or argument "
+                "evaluations exist, so scores rest on the transcript-based "
+                "dimensions only; run those analyses and re-run the judgment "
+                "for evidence-based scores."
+            )
+        used_models = {m for m in models.values() if m}
+        if len(used_models) > 1:
+            data_notes.append(
+                "Agents were scored by different models ("
+                + ", ".join(sorted(used_models))
+                + ") because a daily quota ran out mid-judgment; re-run the "
+                "judgment later for directly comparable scores."
+            )
+        scores = [a["final_score"] for a in agent_scores]
+        if len(scores) >= 2 and len(set(scores)) == 1:
+            data_notes.append(
+                "All agents received the same final score; the judge rated "
+                "their contributions as equal on every available dimension."
             )
 
-        limitations = _bounded_list(output.limitations) + data_notes
+        limitations = list(dict.fromkeys(_bounded_list(llm_limitations) + data_notes))
+        rubric = judge_rubric.rubric_snapshot(min_gap)
+        rubric["inputs"] = input_snapshot
 
-        judgment = DebateJudgment(
-            debate_id=debate.id,
+        values = dict(
             status="completed",
             overall_score=overall_score,
             winner_agent_id=winner_agent_id,
             outcome=outcome,
-            summary=output.summary,
-            scoring_rubric=judge_rubric.rubric_snapshot(min_gap),
+            summary=performance_summary(agent_scores, outcome, winner_agent_id, min_gap),
+            scoring_rubric=rubric,
             agent_scores=agent_scores,
             limitations=limitations or None,
         )
-        db.add(judgment)
+        if existing is not None:
+            for key, value in values.items():
+                setattr(existing, key, value)
+            judgment = existing
+        else:
+            judgment = DebateJudgment(debate_id=debate.id, **values)
+            db.add(judgment)
         await db.commit()
         await db.refresh(judgment)
         logger.info(
@@ -772,3 +970,18 @@ class DebateJudgeService:
             len(agent_scores),
         )
         return judgment
+
+
+def qualitative_limitations(items):
+    """Coverage is a database fact, never a per-agent model's guess.
+
+    One model call intentionally scores one participant; its output must not
+    be mistaken for the coverage of the entire debate. Current coverage is
+    reported separately from persisted records.
+    """
+    pattern = re.compile(
+        r"only\s+(?:one|1)\s+(?:agent|participant)|other participants|"
+        r"no\s+(?:external\s+verification|claim\s+verification|fallacy\s+analys|stored\s+argument)|"
+        r"(?:not|never)\s+(?:been\s+)?(?:evaluated|scored|verified|run)|"
+        r"(?:fallacy|evaluation|verification).*(?:unavailable|missing|not available)", re.I)
+    return list(dict.fromkeys(item for item in (items or []) if not pattern.search(item)))

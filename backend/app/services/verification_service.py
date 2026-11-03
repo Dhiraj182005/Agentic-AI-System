@@ -17,10 +17,12 @@ from app.models.evidence import Evidence
 
 logger = logging.getLogger(__name__)
 
-VERDICTS = ("supported", "contradicted", "insufficient_evidence")
+VERDICTS = ("supported", "contradicted", "partially_supported", "insufficient_evidence")
 CONFIDENCE_LEVELS = ("low", "medium", "high")
 
 VERDICT_ALIASES = {
+    "partially_supported": "partially_supported",
+    "partially supported": "partially_supported",
     "supported": "supported",
     "support": "supported",
     "supports": "supported",
@@ -111,6 +113,9 @@ class VerificationOutput(BaseModel):
 
 
 SYSTEM_PROMPT = (
+    "Use partially_supported when evidence establishes only part of the claim. "
+    "Assess relevance and publisher credibility from the supplied information; state when credibility is unknown. "
+    "Search ranking and source counts alone are not proof. "
     "You evaluate whether retrieved web evidence supports, contradicts, or is "
     "insufficient to evaluate a single claim.\n"
     "Rules:\n"
@@ -130,6 +135,12 @@ SYSTEM_PROMPT = (
     "sources conflict in a way that cannot be resolved from the snippets.\n"
     "- Do not force supported or contradicted when the evidence is "
     "inconclusive. Do not pretend certainty where the evidence is weak.\n"
+    "- Items marked 'published fact-check' carry a publisher's external "
+    "rating of the claim THEY reviewed. Treat the rating as one piece of "
+    "evidence, not as the answer: first check the reviewed claim really is "
+    "the same statement (scope, time, place, numbers); if it differs or the "
+    "relevance is low, give it little weight. Never copy a rating as the "
+    "verdict without the evidence supporting it.\n"
     "- Do not evaluate the debate, the agents, or anyone's personality. "
     "Remain neutral.\n"
     "- explanation: 1-3 concise sentences stating what the evidence indicates. "
@@ -159,8 +170,20 @@ def build_verification_prompt(
         title = (item.title or "").strip()
         source = (item.source_name or "").strip()
         url = (item.url or "").strip()
+        if getattr(item, "source_type", "web") == "google_fact_check":
+            relevance = (
+                f"{item.relevance_score:.2f}" if item.relevance_score is not None else "unknown"
+            )
+            lines.append(
+                f"[{index}] published fact-check | publisher: {item.publisher or source} "
+                f"| url: {url}\n"
+                f"claim they reviewed: {(item.claim_reviewed or '').strip()[:MAX_EVIDENCE_CHARS]}\n"
+                f"publisher's external rating: {item.external_rating or 'not given'} "
+                f"| word overlap with this claim: {relevance}"
+            )
+            continue
         lines.append(
-            f"[{index}] title: {title} | source: {source} | url: {url}\n"
+            f"[{index}] web search result | title: {title} | source: {source} | url: {url}\n"
             f"snippet: {snippet}"
         )
     if not evidence:
@@ -297,8 +320,9 @@ class ClaimVerificationService:
             )
             if isinstance(exc, (LLMProviderAPIError, LLMTimeoutError)):
                 raise ClaimVerificationError(
-                    "Claim verification failed because the language model "
-                    "provider did not respond"
+                    # Keep the provider's specific, user-safe reason (e.g. which
+                    # rate limit or quota) instead of a generic "did not respond".
+                    f"Claim verification failed: {exc.user_message}"
                 ) from exc
             raise ClaimVerificationError(
                 "Claim verification failed because the language model "

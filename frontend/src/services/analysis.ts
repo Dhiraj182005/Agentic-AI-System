@@ -12,6 +12,7 @@ export type FallacyType =
   | 'red_herring'
   | 'false_cause'
   | 'bandwagon'
+  | 'cherry_picking'
   | 'loaded_question'
   | 'tu_quoque'
   | 'no_fallacy'
@@ -55,6 +56,11 @@ export interface ArgumentEvaluation {
   effectiveness_score: number
   overall_score: number
   explanation: string
+  rubric_version: number | null
+  criterion_scores: Record<string, number | null> | null
+  strengths: string[] | null
+  weaknesses: string[] | null
+  evaluated_at: string | null
   created_at: string
 }
 
@@ -75,6 +81,7 @@ export const FALLACY_LABELS: Record<FallacyType, string> = {
   red_herring: 'Red Herring',
   false_cause: 'False Cause',
   bandwagon: 'Bandwagon',
+  cherry_picking: 'Cherry Picking',
   loaded_question: 'Loaded Question',
   tu_quoque: 'Tu Quoque',
   no_fallacy: 'No Fallacy',
@@ -132,7 +139,7 @@ export async function analyzeMessageFallacies(
   messageId: string,
 ): Promise<Fallacy> {
   return request<Fallacy>(
-    `/api/v1/messages/${messageId}/fallacies/analyze`,
+    `/api/v1/messages/${messageId}/fallacies/analyze?force=true`,
     { method: 'POST' },
     true,
   )
@@ -142,7 +149,7 @@ export async function evaluateMessage(
   messageId: string,
 ): Promise<ArgumentEvaluation> {
   return request<ArgumentEvaluation>(
-    `/api/v1/messages/${messageId}/evaluation`,
+    `/api/v1/messages/${messageId}/evaluation?force=true`,
     { method: 'POST' },
     true,
   )

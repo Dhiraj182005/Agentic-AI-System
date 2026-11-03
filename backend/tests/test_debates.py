@@ -578,6 +578,9 @@ async def main():
     await teardown()
     print("\nAll debate creation / agent selection tests PASSED!")
 
+    if os.environ.get("MAVES_FOCUSED_TESTS") == "1":
+        return
+
     print("\nRegression: Module 2 (authentication)...")
     from tests import test_auth
 

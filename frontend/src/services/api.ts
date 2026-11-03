@@ -104,4 +104,52 @@ async function request<T>(
   return res.json() as Promise<T>
 }
 
+/**
+ * Fetch a binary resource (e.g. the PDF report) with the same auth and 401
+ * handling as the JSON client. Errors keep the ApiClientError contract so
+ * callers can reuse `apiErrorMessage`. The Content-Disposition filename, when
+ * present, is returned alongside the blob so the save dialog can use the
+ * server-provided name.
+ */
+export async function requestBlob(
+  path: string,
+  authenticated = true,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const headers = new Headers()
+
+  if (authenticated) {
+    const token = getStoredToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'GET',
+    headers,
+  })
+
+  if (res.status === 401 && authenticated) {
+    clearStoredToken()
+    window.dispatchEvent(new Event('auth:unauthorized'))
+  }
+
+  if (!res.ok) {
+    let detail = 'Request failed'
+    try {
+      const body = await res.json()
+      if (typeof body?.detail === 'string') detail = body.detail
+      else if (Array.isArray(body?.detail)) {
+        detail = body.detail.map((d: { msg?: string }) => d.msg || '').join(', ')
+      }
+    } catch {
+      /* ignore parse errors */
+    }
+    throw new ApiClientError(res.status, detail)
+  }
+
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/i.exec(disposition)
+
+  return { blob: await res.blob(), filename: match ? match[1] : null }
+}
+
 export default request

@@ -49,10 +49,10 @@ export default function AgentTest() {
   }
 
   return (
-    <PageShell>
-      <h1 className="page-title mb-2">Agent Test</h1>
+    <PageShell maxWidth="sm">
+      <h1 className="page-title mb-2">Agent Playground</h1>
       <p className="mb-8 text-gray-400">
-        Test a single role-based agent against a message.
+        Send a message to a single expert agent to see how it reasons. Nothing here is saved as a debate.
       </p>
 
       {loadError && (

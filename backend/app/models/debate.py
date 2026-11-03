@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Text, String
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,8 @@ class Debate(BaseModel):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     topic: Mapped[str] = mapped_column(Text, nullable=False)
+    # Optional background the user gives the agents (scope, region, framing).
+    context: Mapped[str | None] = mapped_column(Text, nullable=True)
     expert_selection_mode: Mapped[str] = mapped_column(
         Enum("auto", "manual", name="expert_selection_mode_enum"), nullable=False, default="manual"
     )
@@ -41,6 +43,12 @@ class Debate(BaseModel):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Safe, user-facing reason for a failed run (cleared when resumed).
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Post-debate analysis run (claim extraction, evidence, verification,
+    # verdict): state, counts and per-claim failures. See analysis_pipeline.
+    analysis_status: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    execution_state: Mapped[str] = mapped_column(String(40), nullable=False, default="created", server_default="created")
 
     user = relationship("User", back_populates="debates")
     agents = relationship(
@@ -82,6 +90,14 @@ class Debate(BaseModel):
     )
     judgment = relationship(
         "DebateJudgment",
+        back_populates="debate",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    verdict = relationship(
+        "DebateVerdict",
         back_populates="debate",
         uselist=False,
         cascade="all, delete-orphan",

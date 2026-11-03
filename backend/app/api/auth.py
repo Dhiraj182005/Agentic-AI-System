@@ -5,7 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import create_access_token
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
+from app.schemas.auth import (
+    DemoLoginResponse,
+    LoginRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
 from app.services.auth_service import (
     AuthServiceError,
     DuplicateEmailError,
@@ -14,6 +20,7 @@ from app.services.auth_service import (
     get_user_by_id,
     register_user,
 )
+from app.services.demo_account import available_demo_credentials, is_demo_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -92,4 +99,21 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
-    return current_user
+    response = UserResponse.model_validate(current_user)
+    response.is_demo = is_demo_email(current_user.email)
+    return response
+
+
+@router.get("/demo", response_model=DemoLoginResponse)
+async def demo_login(db: AsyncSession = Depends(get_db)):
+    """Demo credentials for the login page's "Fill Demo Credentials" button.
+
+    Only returned while DEMO_ACCOUNT_ENABLED is on and the demo account has
+    been created. Logging in still goes through POST /auth/login.
+    """
+    credentials = await available_demo_credentials(db)
+    if credentials is None:
+        return DemoLoginResponse(enabled=False)
+    return DemoLoginResponse(
+        enabled=True, email=credentials.email, password=credentials.password
+    )
