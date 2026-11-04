@@ -1,4 +1,9 @@
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/+$/, '')
+export const API_URL = configuredApiUrl || (import.meta.env.DEV ? 'http://localhost:8000' : '')
+
+if (!API_URL) {
+  throw new Error('VITE_API_URL must be configured when building the production frontend.')
+}
 
 export const TOKEN_STORAGE_KEY = 'ai_debate_arena_token'
 
