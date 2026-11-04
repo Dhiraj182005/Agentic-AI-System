@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
-from app.db.database import get_db
+from app.db.database import get_db, log_connection_failure
 from app.db.redis import check_redis_health
 from app.schemas.health import HealthResponse
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -17,8 +19,16 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     try:
         await db.execute(text("SELECT 1"))
         db_status = "connected"
-    except Exception:
+        logger.info("postgresql_connection_succeeded operation=health_check",
+                    extra={"event": "postgresql_connection_succeeded", "operation": "health_check"})
+    except Exception as exc:
+        log_connection_failure(exc, operation="health_check")
         db_status = "disconnected"
+        # Do not let get_db's final commit retry an aborted health transaction.
+        try:
+            await db.rollback()
+        except Exception as rollback_error:
+            log_connection_failure(rollback_error, operation="health_check_rollback")
 
     if await check_redis_health():
         redis_status = "connected"
