@@ -4,9 +4,43 @@ import unittest
 from unittest.mock import AsyncMock, patch
 from sqlalchemy.exc import OperationalError
 from app.api.health import health_check
+from app.db.database import log_connection_failure
 
 
 class HealthLoggingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_original_cause(self):
+        original = ConnectionRefusedError('private_user private_password')
+        try:
+            raise TypeError('wrapper private_token') from original
+        except TypeError as wrapped:
+            with self.assertLogs('app.db.database', level=logging.ERROR) as logs:
+                log_connection_failure(wrapped, operation='health_check')
+            self.assertIs(wrapped.__cause__, original)
+        self.assertEqual(logs.records[0].exception_type, 'ConnectionRefusedError')
+        self.assertEqual(logs.records[0].exception_chain, ['TypeError', 'ConnectionRefusedError'])
+        self.assertNotIn('private_', str(logs.output))
+
+    async def test_real_asyncpg_keyword_typeerror(self):
+        import asyncpg
+        try:
+            await asyncpg.connect(sslmode='require')
+        except TypeError as original:
+            with self.assertLogs('app.db.database', level=logging.ERROR) as logs:
+                log_connection_failure(original, operation='health_check')
+        else:
+            self.fail('Expected unsupported asyncpg keyword')
+        self.assertEqual(logs.records[0].exception_type, 'TypeError')
+        self.assertIn("unsupported connection keyword 'sslmode'", logs.output[0])
+
+    async def test_unknown_typeerror_redacts_all_payload(self):
+        error = TypeError('postgresql://private_user:private_password@host/db token=private_token')
+        error.__cause__ = error  # Defensive cycle handling.
+        with self.assertLogs('app.db.database', level=logging.ERROR) as logs:
+            log_connection_failure(error, operation='health_check')
+        self.assertEqual(logs.records[0].exception_type, 'TypeError')
+        self.assertNotIn('private_', str(logs.output))
+        self.assertNotIn('postgresql://', str(logs.output))
+
     async def test_success(self):
         db = AsyncMock()
         with patch('app.api.health.check_redis_health', new=AsyncMock(return_value=True)), self.assertLogs('app.api.health', level=logging.INFO) as logs:
