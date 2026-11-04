@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
+import hashlib
+import base64
 
 from app.core.config import get_settings
 
@@ -9,13 +11,18 @@ settings = get_settings()
 
 
 def hash_password(password: str) -> str:
-    password_bytes = password.encode("utf-8")
+    # Prehash new passwords so bcrypt's 72-byte limit cannot silently discard
+    # a suffix. Version the format; existing bcrypt hashes still authenticate.
+    password_bytes = base64.b64encode(hashlib.sha256(password.encode("utf-8")).digest())
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
+    return "bcrypt-sha256$" + bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
     try:
+        if password_hash.startswith("bcrypt-sha256$"):
+            password_bytes = base64.b64encode(hashlib.sha256(plain_password.encode("utf-8")).digest())
+            return bcrypt.checkpw(password_bytes, password_hash.removeprefix("bcrypt-sha256$").encode("utf-8"))
         return bcrypt.checkpw(
             plain_password.encode("utf-8"), password_hash.encode("utf-8")
         )

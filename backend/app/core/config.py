@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pydantic import model_validator
+from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
@@ -89,7 +91,28 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    model_config = {"env_file": ".env", "extra": "ignore"}
+    @model_validator(mode="after")
+    def validate_production(self):
+        if self.APP_ENV.lower() not in ("production", "prod"):
+            return self
+        if len(self.JWT_SECRET_KEY) < 32 or self.JWT_SECRET_KEY.lower().startswith(("change-me", "changeme")):
+            raise ValueError("Production requires a unique JWT_SECRET_KEY of at least 32 characters")
+        origin = urlparse(self.FRONTEND_URL)
+        if origin.scheme != "https" or not origin.netloc or origin.path not in ("", "/") or origin.query or origin.fragment or origin.username or '*' in self.FRONTEND_URL:
+            raise ValueError("Production FRONTEND_URL must be one explicit HTTPS origin")
+        database = urlparse(self.DATABASE_URL)
+        if database.scheme != "postgresql+asyncpg" or not database.hostname or not database.password or database.password in ("postgres", "PASSWORD", "password"):
+            raise ValueError("Production requires an async PostgreSQL URL with non-default credentials")
+        redis = urlparse(self.REDIS_URL)
+        if redis.scheme not in ("redis", "rediss") or not redis.hostname or not redis.password or redis.password in ("PASSWORD", "password"):
+            raise ValueError("Production requires an authenticated Redis URL")
+        if self.DEMO_ACCOUNT_ENABLED:
+            raise ValueError("Disable the public shared demo account in production")
+        if self.JWT_ALGORITHM not in ("HS256", "HS384", "HS512") or self.ACCESS_TOKEN_EXPIRE_MINUTES <= 0:
+            raise ValueError("Invalid production JWT configuration")
+        return self
+
+    model_config = {"env_file": ".env", "extra": "ignore", "hide_input_in_errors": True}
 
 
 @lru_cache

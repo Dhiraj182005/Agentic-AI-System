@@ -187,12 +187,20 @@ async def test_extraction_recovery(client):
         await analysis_pipeline.wait_for_background()
     failed = (await client.get(f'/api/v1/debates/{did}/analysis', headers=headers)).json()
     assert failed['stages']['extraction']['state'] == 'failed' and failed['claims_total'] == 0
+    from app.models.fallacy import Fallacy
+    from app.models.argument_evaluation import ArgumentEvaluation
+    async with base._test_session() as db:
+        saved = [list((await db.execute(select(model.id).where(model.debate_id == did))).scalars())
+                 for model in (Fallacy, ArgumentEvaluation)]
     with providers():
         await client.post(f'/api/v1/debates/{did}/analysis', headers=headers)
         await analysis_pipeline.wait_for_background()
     recovered = (await client.get(f'/api/v1/debates/{did}/analysis', headers=headers)).json()
     assert recovered['stages']['extraction']['state'] == 'completed' and recovered['claims_total'] == 6
-    assert recovered['fallacy']['skipped'] == 2 and recovered['evaluation']['skipped'] == 2
+    async with base._test_session() as db:
+        current = [list((await db.execute(select(model.id).where(model.debate_id == did))).scalars())
+                   for model in (Fallacy, ArgumentEvaluation)]
+    assert [set(ids) for ids in current] == [set(ids) for ids in saved] and all(len(ids) == 2 for ids in saved)
     print('Failed extraction remains explicit; retry preserves successful message analyses: PASSED')
 
 

@@ -158,8 +158,8 @@ export function positionTone(position: string): string {
 
 export const EVIDENCE_BASIS_TEXT: Record<Verdict['evidence_basis'], string> = {
   none: 'No claim is supported or contradicted by stored evidence yet.',
-  partial: 'Fewer than half of the claims are backed or refuted by stored evidence.',
-  substantial: 'At least half of the claims are backed or refuted by stored evidence.',
+  partial: 'Fewer than half of the factual claims are backed or refuted by stored evidence.',
+  substantial: 'At least half of the factual claims are backed or refuted by stored evidence.',
 }
 
 export const INCONCLUSIVE_REASON_TEXT: Record<

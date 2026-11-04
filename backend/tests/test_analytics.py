@@ -56,6 +56,8 @@ ARGUMENT = (
 async def setup():
     global _test_engine, _test_session
 
+    from tests import require_disposable_database
+    require_disposable_database(TEST_DB_URL)
     _test_engine = create_async_engine(TEST_DB_URL)
     _test_session = async_sessionmaker(_test_engine, expire_on_commit=False)
 

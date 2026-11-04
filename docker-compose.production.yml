@@ -1,0 +1,56 @@
+# Standalone production starting point. Do not merge with the development file.
+# Bind a host TLS reverse proxy to these loopback ports; DB/Redis stay private.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: maves
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a unique database password}
+      POSTGRES_DB: maves
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U maves -d maves"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set a unique Redis password}
+    command: [redis-server, --requirepass, "${REDIS_PASSWORD:?Set a unique Redis password}"]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    env_file: ${MAVES_PRODUCTION_ENV_FILE:-.env.production}
+    environment:
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?Set the production database URL}
+      REDIS_URL: ${REDIS_URL:?Set the production Redis URL}
+      FRONTEND_URL: ${FRONTEND_URL:?Set the frontend HTTPS origin}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set a strong JWT signing key}
+      DEMO_ACCOUNT_ENABLED: "false"
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    restart: unless-stopped
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+      args:
+        VITE_API_URL: ${VITE_API_URL:?Set the public backend HTTPS origin}
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [backend]
+    restart: unless-stopped
+volumes:
+  postgres_data:

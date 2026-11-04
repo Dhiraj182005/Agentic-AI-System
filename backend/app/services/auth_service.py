@@ -1,4 +1,6 @@
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
@@ -26,7 +28,11 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
 
 
 async def get_user_by_id(db: AsyncSession, user_id: str) -> User | None:
-    result = await db.execute(select(User).where(User.id == user_id))
+    try:
+        parsed_id = UUID(user_id)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    result = await db.execute(select(User).where(User.id == parsed_id))
     return result.scalar_one_or_none()
 
 
@@ -39,8 +45,12 @@ async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
 
     user = User(email=normalized_email, password_hash=hash_password(data.password))
     db.add(user)
-    await db.flush()
-    await db.commit()
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise DuplicateEmailError(normalized_email) from None
     await db.refresh(user)
     return user
 
@@ -50,4 +60,8 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     user = await get_user_by_email(db, normalized_email)
     if user is None or not verify_password(password, user.password_hash):
         raise InvalidCredentialsError(normalized_email)
+
+    if not user.password_hash.startswith("bcrypt-sha256$"):
+        user.password_hash = hash_password(password)
+        await db.commit()
     return user

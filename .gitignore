@@ -15,8 +15,10 @@ node_modules/
 frontend/dist/
 
 # Environment
-.env
-.env.local
+.env*
+!.env.example
+!.env.production.example
+!**/.env.example
 
 # IDE
 .vscode/
@@ -34,3 +36,5 @@ Thumbs.db
 # Alembic
 backend/alembic/versions/*.pyc
 backend/test-results/
+*.dump
+*.backup
