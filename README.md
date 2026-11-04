@@ -296,6 +296,34 @@ Legacy `/start` and `/resume` remain synchronous for compatibility. The current 
 
 ## Database and migrations
 
+### Render: apply the production schema
+
+Use the Render backend service's existing environment, including its production
+`DATABASE_URL`. With the service **Root Directory set to `backend`**, set its
+**Pre-Deploy Command** to:
+
+```bash
+alembic upgrade head
+```
+
+For an already-running service with missing tables, run that same command once
+in the Render service Shell, from the directory containing `alembic.ini`.
+If the service runs from the repository root instead, use:
+
+```bash
+cd backend && alembic upgrade head
+```
+
+Verify with `alembic current` (expected `018 (head)`) and `alembic check`.
+Then run `python seed.py` once if the built-in agent records have not been seeded.
+Keep migrations in the release/pre-deploy step, not the Uvicorn startup command.
+If your Render plan does not provide pre-deploy commands or a service Shell, run
+the migration from a trusted environment with the production database's external
+connection configured securely. Never paste credentials into command history or logs.
+Do not use `alembic stamp head` to fix missing tables: stamping does not create them.
+If Alembic reports head but `users` is missing, check that the application and
+migration commands target the same database/schema before making further changes.
+
 Migrations live in `backend/alembic/versions`; current head is **018**. Relationships link users, debates, agents, rounds, messages, claims, evidence, verifications, argument analyses, judgments, verdicts, and events.
 
 ```bash

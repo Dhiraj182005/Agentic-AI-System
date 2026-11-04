@@ -11,7 +11,8 @@ from app.models import User, Debate, Agent, DebateAgent, DebateRound, DebateMess
 
 config = context.config
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+# ConfigParser interpolates percent signs; preserve URL-encoded credentials.
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
