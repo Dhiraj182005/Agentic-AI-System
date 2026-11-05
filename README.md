@@ -2,6 +2,10 @@
 
 **Multi-Agent LLM System for Structured Debate, Evidence Analysis, and Argument Verification.**
 
+**[Launch MAVES — Live Application](https://agentic-ai-system-nu.vercel.app)**
+
+Create an account or sign in to start a debate. The backend uses Render's free tier, so the first request after inactivity may take a little longer.
+
 MAVES brings specialist AI agents into a multi-round debate, extracts their claims, retrieves external evidence, and presents a reasoned assessment with citations and limitations. It helps readers inspect arguments and compare perspectives instead of treating one generated answer as established fact.
 
 Developed as a final-year B.Tech CSE (Data Science) project for academic year 2026–27. Generated arguments, analyses, and verdicts can be wrong; MAVES does not guarantee factual correctness.
@@ -391,9 +395,10 @@ No license file has been specified. Public source visibility does not imply MIT 
 
 ## Author and project links
 
+- Live application: [MAVES — AI Debate Arena](https://agentic-ai-system-nu.vercel.app)
 - Repository: [Dhiraj182005/Agentic-AI-System](https://github.com/Dhiraj182005/Agentic-AI-System)
 - Repository owner: [Dhiraj182005](https://github.com/Dhiraj182005)
 - Current review: [PRE_DEPLOYMENT_AUDIT.md](PRE_DEPLOYMENT_AUDIT.md)
 - Historical notes: [initial audit](docs/MAVES_INITIAL_AUDIT.md), [implementation report](docs/MAVES_IMPLEMENTATION_REPORT.md), [evaluation](docs/EVALUATION.md)
 
-No public hosting URL or additional author identity is asserted here.
+No additional author identity is asserted here.
